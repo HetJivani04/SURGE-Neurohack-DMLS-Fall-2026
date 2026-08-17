@@ -1,28 +1,13 @@
-# Neurotech Hackathon Template
+# 🧠 Welcome to the Fall 2026 SURGE Neuro Hackathon!
 
-# How to use this template:
-1. Create new repository
-   - Under `Start with a template` select `Neurotech-Hackathon-Template` (this one)
-   - No need to add a README, or gitignore (they're already in the template!)
-2. Update/fill in details in the newly created repository!
-
-**Notes:**
-- The Table of contents in *this* README is generated with a vscode extension ["Markdown All in One"](https://github.com/yzhang-gh/vscode-markdown) - it is required to update the TOC
-
----
-
-# 🧠 Welcome to the Winter 2026 SURGE Neurotech Hackathon!
-
-Welcome to the **SURGE Neurotech Hack 2026**, where you'll get hands-on experience developing Brain-Computer Interfaces (BCIs) and analyzing neural data. Over the course of this weekend, you'll work in teams to prototype applications using EEG data. 
+Welcome to the **SURGE Neuro Hack Fall 2026**, where you'll get hands-on experience developing Brain-Computer Interfaces (BCIs) and analyzing neural data. Over the course of this weekend, you'll work in teams to prototype applications using EEG data. 
 
 <details>
 <summary>Table of Contents</summary>
 
 ## Table of Contents
 
-- [Neurotech Hackathon Template](#neurotech-hackathon-template)
-- [How to use this template:](#how-to-use-this-template)
-- [🧠 Welcome to the Winter 2026 SURGE Neurotech Hackathon!](#-welcome-to-the-winter-2026-surge-neurotech-hackathon)
+- [🧠 Welcome to the Fall 2026 SURGE Neuro Hackathon!](#-welcome-to-the-fall-2026-surge-neuro-hackathon)
   - [Table of Contents](#table-of-contents)
 - [General Information:](#general-information)
   - [Support \& Collaboration](#support--collaboration)
@@ -43,7 +28,7 @@ Welcome to the **SURGE Neurotech Hack 2026**, where you'll get hands-on experien
     - [**3️⃣ Choose Your Challenge Stream and Get Hacking!**](#3️⃣-choose-your-challenge-stream-and-get-hacking)
 - [Don't know where to start? Check this out!](#dont-know-where-to-start-check-this-out)
 - [Repository Table of Contents](#repository-table-of-contents)
-  - [📂 BrainHack-Fall-2025](#-brainhack-fall-2025)
+  - [📂 Neurohack-Fall-2026](#-neurohack-fall-2026)
     - [📂 getting-setup - Instructions on how to setup python](#-getting-setup---instructions-on-how-to-setup-python)
     - [📂 real-time-bci-stream – Resources \& starter code for real-time EEG applications](#-real-time-bci-stream--resources--starter-code-for-real-time-eeg-applications)
     - [📂 offline-analysis-stream – Resources \& starter code for EEG data analysis](#-offline-analysis-stream--resources--starter-code-for-eeg-data-analysis)
@@ -161,8 +146,8 @@ We have **three challenge tracks** you can choose from:
 # 📌 Getting Started
 ### **1️⃣ Clone this Repository**
 ```bash
-git clone https://github.com/SURGE-NeuroTech-Club/<your_repo_name>.git
-cd <your_repo_name>
+git clone https://github.com/SURGE-NeuroTech-Club/Neurohack-Fall-2026.git
+cd <Neurohack-Fall-2026>
 ```
 
 ### **2️⃣ Install Dependencies**
@@ -189,8 +174,8 @@ Dr. Aaron Newman produced a free online textbook that is a **fantastic place to 
 ---
 
 # Repository Table of Contents
-
-## 📂 [BrainHack-Fall-2025](./)
+your_repo_name
+## 📂 [Neurohack-Fall-2026](./)
 - 📜 [README.md](./README.md) – Main documentation
 
 ### 📂 [getting-setup](./getting-setup/) - Instructions on how to setup python
@@ -210,4 +195,4 @@ Dr. Aaron Newman produced a free online textbook that is a **fantastic place to 
 ### 📂 [resources](./resources/) – Learning materials and references
   - 📄 [bci_basics.md](./resources/bci_basics.md) – Introduction to BCI concepts
   - 📄 [useful_links.md](./resources/useful_links.md) – Reference materials and links
-  - 📄 [judging_rubrics.mb](./resources/Juding_rubrics.pdf) – Outline of deliverables for each stream & judging rubrics
+  - 📄 [judging_rubrics.pdf](./resources/Judging_rubrics.pdf) – Outline of deliverables for each stream & judging rubrics
