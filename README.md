@@ -39,17 +39,17 @@ Welcome to the **SURGE Neuro Hack Fall 2026**, where you'll get hands-on experie
 # General Information:
 
 ## Support & Collaboration
-- Join the **#<ch_name>** channel on the [SURGE Discord server](https://discord.gg/WKTet49nE5) to ask questions, share ideas, and collaborate with other participants.
+- Join the **#neurohack-fall-2026** channel on the [SURGE Discord server](https://discord.gg/jvkwKfERt) to ask questions, share ideas, and collaborate with other participants.
 - Refer back to the [introduction presentation](https://docs.google.com/presentation/d/1Kv9ZSb0_6BqbbZlZWzYRzQ__WZipsEUCZKcd4CUvxyY/edit?usp=sharing)
 - Reach out directly to me at [mascini.max@dal.ca](mailto:mascini.max@dal.ca)! (Please keep in mind I may be busy helping other teams, so I may not respond immediately)
 
 ## Hackathon Schedule
 
 - **Day 1 (Friday 5:00pm-8:00pm):** Introduction to BCI, EEG, and Team Formation
-- **Day 2 (Saturday 10:00am-4:00pm):** Hacking!
-- **Day 3 (Sunday 10:00am-3:00pm):** Project wrap-up & submission, team presentations, and judging!
-  - Submission Deadline: Sunday @ 1:00 PM
-  - Presentations: 1:10 PM - 3:00 PM
+- **Day 2 (Saturday 9:00am-4:00pm):** Hacking!
+- **Day 3 (Sunday 9:00am-4:00pm):** Project wrap-up & submission, team presentations, and judging!
+  - Submission Deadline: Sunday @ 2:00 PM
+  - Presentations: 2:30 PM - 4:00 PM
 
 ## Rules:
 1. You are free to use any hardware or software tools you like, but we recommend using the resources provided in this repository.
@@ -75,7 +75,7 @@ We have **three challenge tracks** you can choose from:
 
 ### Real-Time BCI Deliverables
 
-- **Project Presentation** (12 minutes max.) - See the [rubric for details.](./resources/Juding_rubrics.pdf) A general template for your presentation should include:
+- **Project Presentation** (10 minutes max.) - See the [rubric for details.](./resources/Judging_rubrics.pdf) A general template for your presentation should include:
   -  Problem Statement & Motivation  
   - System Design & Implementation 
   - A live Demonstration (or a pre-recorded demo if real-time is not possible)  
@@ -93,14 +93,11 @@ We have **three challenge tracks** you can choose from:
 
 ### Offline EEG Data/ML Deliverables
 
-- **Project Presentation** (12 minutes max.) - see the [rubric for details.](./resources/Juding_rubrics.pdf) A general template for your presentation should include:
+- **Project Presentation** (10 minutes max.) - see the [rubric for details.](./resources/Judging_rubrics.pdf) A general template for your presentation should include:
   - Problem Statement & Motivation  
   - What you did with the data (preprocessing, analysis, modeling) 
   - Results & Interpretation (accuracy, feature importance, visualization of findings, etc.)  
   - Challenges & Future Work  
-- **Report (Recommended)** – A Jupyter Notebook or PDF report summarizing:
-  - You could even make a report and use it for your presentation!
-  - Your data analysis process (where did you start, what did you try, what worked) and key insights; visualizations, results, and interpretation of findings.
 - **Code Repository** (GitHub or Zip file) – Should include:  
   - Your code/analyses, presentation and instructions for running the project (a readme file)
 
@@ -114,7 +111,7 @@ We have **three challenge tracks** you can choose from:
 
 ### Hardware Hacking Deliverables
 
-- **Project Presentation** (12 minutes max.) - See the [rubric for details.](./resources/Juding_rubrics.pdf) A general template for your presentation should include:
+- **Project Presentation** (10 minutes max.) - See the [rubric for details.](./resources/Judging_rubrics.pdf) A general template for your presentation should include:
   - Problem Statement & Motivation
   - Hardware Design & Implementation (schematics, components, build process)
   - A live Demonstration (or a pre-recorded demo)
@@ -127,19 +124,19 @@ We have **three challenge tracks** you can choose from:
 
 # 📩 Submission Information
 
-- **Submission Deadline: Sunday, 1:00 PM**
+- **Submission Deadline: Sunday, 2:00 PM**
 - **Judging Format:** A **short presentation** followed by a **5-minute Q&A** session from the judges.
   - Order of team presentations will be decided at random.
-- **Judging Criteria:** Projects will be evaluated based on the [rubrics provided for each challenge stream.](./resources/Juding_rubrics.pdf)
-- **Prizes:** Top teams from each stream will bragging rights, a great addition to your CV, and sweet SURGE swag prizes!
+- **Judging Criteria:** Projects will be evaluated based on the [rubrics provided for each challenge stream.](./resources/Judging_rubrics.pdf)
+- **Prizes:** The top-scoring team will receive $500 to be split among the group equally; 2nd and 3rd place teams will get bragging rights, a great addition to your CV, and sweet SURGE swag prizes!
 
 ### Submission Process
 - **How to Submit:**  
   - Upload your presentation, code, reports, and any other relevant files to your Github repository.
     - If files are too large, or you don't have a Github repository, you can submit a zip file.
     - Ensure it includes a *README* explaining about (and how to run/use) your project. 
-  - **[Submit through the submission form](https://docs.google.com/forms/d/e/1FAIpQLSc65U8UJwx7-sMt4GFWles26xFzohy9mJT58iCGx3GzYFaYJA/viewform?usp=header)**
-- **NOTE:** If you submit multiple times, only your most recent submission made before the submission deadline (1:00 pm on Sunday) will be considered. Submissions received after the deadline will not be accepted.  
+  - **[Submit through the submission form](https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=mRm4YH8LLUGSo-F9iunj4H7FrINmspNAj3XHyveOfoJUNEpIMDdMRDVNUDlXVVdQTkpNVDBEMk9QSy4u)**
+- **NOTE:** If you submit multiple times, only your most recent submission made before the submission deadline (2:00 pm on Sunday) will be considered. Submissions received after the deadline will not be accepted.  
 
 ---
 
@@ -151,7 +148,7 @@ cd <Neurohack-Fall-2026>
 ```
 
 ### **2️⃣ Install Dependencies**
-Navigate to [resources/python_setup.md](./resources/python_setup.md) for instructions on how to setup the provided miniforge `Brainhack` environment.
+Navigate to [getting-setup/python_setup.md](./getting-setup/python_setup.md) for instructions on how to setup the provided miniforge `Brainhack` environment.
 
 Alternatively, If you already have Python 3.12 installed, you will need to ensure you have the following packages installed if you want to run the provided scripts.
 ```bash
@@ -162,8 +159,8 @@ For Unity/Pygame-based projects, additional installations may be required.
 
 ### **3️⃣ Choose Your Challenge Stream and Get Hacking!**
 Navigate to either:
-- `real-time-bci/` for the interactive applications stream.
-- `offline-analysis/` for the EEG data processing and machine learning stream.
+- `real-time-bci-stream/` for the interactive applications stream.
+- `offline-analysis-stream/` for the EEG data processing and machine learning stream.
 
 ---
 # Don't know where to start? Check this out!
@@ -181,15 +178,15 @@ your_repo_name
 ### 📂 [getting-setup](./getting-setup/) - Instructions on how to setup python
 - 📄 [python_setup.md](./getting-setup/python_setup.md) – Instructions on how to setup python
 - 🐍 [brainhack_env.yaml](./getting-setup/brainhack_env.yaml) - Anaconda environment file with python 3.13 to get you started
-- 🐍 [compatibility_brainhack_env.yaml](./getting-setup/brainhack_env.yaml) - Anaconda environment file with python 3.10 to get you started
+- 🐍 [compatibility_brainhack_env.yaml](./getting-setup/compatibility_brainhack_env.yaml) - Anaconda environment file with python 3.10 to get you started
 
 ### 📂 [real-time-bci-stream](./real-time-bci-stream/) – Resources & starter code for real-time EEG applications
   - 📄 [cyton_setup_instructions.md](./real-time-bci-stream/cyton_setup_instructions.md) – Setup guide
-  - 📂 [sample-data/](./real-time-bci-stream/sample-data/) – Example EEG data
   - 📂 [example-scripts/](./real-time-bci-stream/example-scripts/) – Starter code for real-time BCI
 
 ### 📂 [offline-analysis-stream](./offline-analysis-stream/) – Resources & starter code for EEG data analysis
   - 📄 [dataset_description.md](./offline-analysis-stream/dataset_description.md) – Information on the dataset
+  - 📂 [sample-data/](./offline-analysis-stream/sample-data/) – Example EEG data
   - 📂 [example-scripts/](./offline-analysis-stream/example-scripts/) – Starter scripts for EEG analysis
 
 ### 📂 [resources](./resources/) – Learning materials and references

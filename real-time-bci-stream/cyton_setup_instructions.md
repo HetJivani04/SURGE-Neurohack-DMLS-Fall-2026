@@ -27,7 +27,7 @@ We have **5 [OpenBCI Cyton boards](https://docs.openbci.com/Cyton/CytonLanding/)
 
 ### **Step 2: Streaming EEG Data in Python**
 To stream data from the Cyton board using Python, see:  
-📄 **[OpenBCI Realtime Example Notebook](./example-scripts/OpenBCI_Realtime_Example.ipynb)** in `example-scripts/`.  
+📄 **[Realtime Stream Example Notebook](./example-scripts/Realtime_Stream_Example_Notebook.ipynb)** in `example-scripts/`.  
 
 ---
 

@@ -108,19 +108,19 @@ This dataset contains **EEG recordings from 10 participants** who performed thre
 ```
 📂 eeg_data
 ├── 📂 Flicker
-│ ├── 📄 sub-010_task-Flicker_eeg.fif
-│ ├── 📄 sub-011_task-Flicker_eeg.fif
-│ ├── 📄 sub-012_task-Flicker_eeg.fif
+│ ├── 📄 sub-010_Flicker_eeg.fif
+│ ├── 📄 sub-011_Flicker_eeg.fif
+│ ├── 📄 sub-012_Flicker_eeg.fif
 │ └── ...
 ├── 📂 Oddball
-│ ├── 📄 sub-010_task-Oddball_eeg.fif
-│ ├── 📄 sub-011_task-Oddball_eeg.fif
-│ ├── 📄 sub-012_task-Oddball_eeg.fif
+│ ├── 📄 sub-010_Oddball_eeg.fif
+│ ├── 📄 sub-011_Oddball_eeg.fif
+│ ├── 📄 sub-012_Oddball_eeg.fif
 │ └── ...
 ├── 📂 FlickerOddball
-│ ├── 📄 sub-010_task-FlickerOddball_eeg.fif
-│ ├── 📄 sub-011_task-FlickerOddball_eeg.fif
-│ ├── 📄 sub-012_task-FlickerOddball_eeg.fif
+│ ├── 📄 sub-010_FlickerOddball_eeg.fif
+│ ├── 📄 sub-011_FlickerOddball_eeg.fif
+│ ├── 📄 sub-012_FlickerOddball_eeg.fif
 │ └── ...  
 ```
 

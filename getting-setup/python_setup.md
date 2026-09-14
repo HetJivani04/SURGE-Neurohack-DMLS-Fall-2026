@@ -2,9 +2,9 @@
 This setup guide is **NOT REQUIRED.** You may choose to use the provided SURGE computers which come pre-configured with the necessary software. However, if you prefer to set up your own environment on a personal computer, please follow the instructions below.
 
 # Python Setup
-This document will guide you through setting up the Python environment for the BrainHACK 2025 hackathon. There are several ways to achieve this:
-1. (**Highly Recommended**) Using the provided `brainhack_env.yml` file to create a conda environment with Miniforge.
-   - If you have trouble when installing other packages (i.e., those not included by default in the environment), you can try using the `compatibility_brainhack_env.yml` file instead, which uses Python 3.10 instead of 3.13.
+This document will guide you through setting up the Python environment for the BrainHACK Fall 2026 hackathon. There are several ways to achieve this:
+1. (**Highly Recommended**) Using the provided `brainhack_env.yaml` file to create a conda environment with Miniforge.
+   - If you have trouble when installing other packages (i.e., those not included by default in the environment), you can try using the `compatibility_brainhack_env.yaml` file instead, which uses Python 3.10 instead of 3.13.
 2. Creating a virtual environment with `venv` and installing the required packages manually.
 
 This document will only cover the first method, which is the most straightforward and ensures compatibility with the provided starter code and resources.
@@ -49,7 +49,7 @@ After installing Miniforge, open a terminal and navigate to the directory with t
 ```bash
 conda env create -f brainhack_env.yaml
 ```
-There will be lots of output, and you will eventually be prompted to confirm. Type `y` and press `Enter` to proceed. Package downloading will behin - this process may take a few minutes to complete.
+There will be lots of output, and you will eventually be prompted to confirm. Type `y` and press `Enter` to proceed. Package downloading will begin - this process may take a few minutes to complete.
 
 ### **3️⃣ Verify Installation and Activate the Environment**
 To verify that the environment was created successfully, run:
@@ -93,7 +93,7 @@ source brainhack_env/bin/activate
 ### **3️⃣ Install Required Packages**
 You can install the required packages using `pip`. 
 ```
-pip install scipy jupyerlab mne brainflow pyserial
+pip install scipy jupyterlab mne brainflow pyserial
 ```
 You can manually install other packages you need using:
 ```bash
