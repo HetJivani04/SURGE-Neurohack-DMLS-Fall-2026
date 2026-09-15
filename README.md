@@ -48,7 +48,7 @@ Welcome to the **SURGE Neuro Hack Fall 2026**, where you'll get hands-on experie
 - **Day 1 (Friday 5:00pm-8:00pm):** Introduction to BCI, EEG, and Team Formation
 - **Day 2 (Saturday 9:00am-4:00pm):** Hacking!
 - **Day 3 (Sunday 9:00am-4:00pm):** Project wrap-up & submission, team presentations, and judging!
-  - Submission Deadline: Sunday @ 2:00 PM
+  - Submission Deadline: Sunday @ 1:00 PM
   - Presentations: 2:30 PM - 4:00 PM
 
 ## Rules:
@@ -124,7 +124,7 @@ We have **three challenge tracks** you can choose from:
 
 # 📩 Submission Information
 
-- **Submission Deadline: Sunday, 2:00 PM**
+- **Submission Deadline: Sunday, 1:00 PM**
 - **Judging Format:** A **short presentation** followed by a **5-minute Q&A** session from the judges.
   - Order of team presentations will be decided at random.
 - **Judging Criteria:** Projects will be evaluated based on the [rubrics provided for each challenge stream.](./resources/Judging_rubrics.pdf)
@@ -136,7 +136,7 @@ We have **three challenge tracks** you can choose from:
     - If files are too large, or you don't have a Github repository, you can submit a zip file.
     - Ensure it includes a *README* explaining about (and how to run/use) your project. 
   - **[Submit through the submission form](https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=mRm4YH8LLUGSo-F9iunj4H7FrINmspNAj3XHyveOfoJUNEpIMDdMRDVNUDlXVVdQTkpNVDBEMk9QSy4u)**
-- **NOTE:** If you submit multiple times, only your most recent submission made before the submission deadline (2:00 pm on Sunday) will be considered. Submissions received after the deadline will not be accepted.  
+- **NOTE:** If you submit multiple times, only your most recent submission made before the submission deadline (1:00 pm on Sunday) will be considered. Submissions received after the deadline will not be accepted.  
 
 ---
 
