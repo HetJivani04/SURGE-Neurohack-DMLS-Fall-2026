@@ -1,0 +1,11 @@
+# Full model. Loaded under the `model.` prefix of the resolved config.
+K: 512              # template nodes
+d: 32               # embedding dimension
+r: 32               # rank of the connectivity factorization
+m_draws: 4          # posterior draws per subject per step
+batch_subjects: 8   # subjects per minibatch
+sinkhorn:
+  L: 30             # Sinkhorn iterations
+  eps: [0.1, 0.01]  # entropic regularisation schedule (start, end)
+beta:
+  warmup_frac: 0.3  # fraction of training over which beta is warmed up

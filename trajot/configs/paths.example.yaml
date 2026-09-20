@@ -1,0 +1,8 @@
+# Copy this file to configs/paths.yaml and set your own values:
+#
+#     cp configs/paths.example.yaml configs/paths.yaml
+#
+# configs/paths.yaml is git-ignored.
+
+data_root: /absolute/path/to/ds000243
+contract_version: "1"

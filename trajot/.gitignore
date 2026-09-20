@@ -1,0 +1,6 @@
+configs/paths.yaml
+data/
+runs/
+__pycache__/
+.venv/
+*.egg-info/

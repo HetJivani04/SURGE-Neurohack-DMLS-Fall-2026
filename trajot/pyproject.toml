@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trajot"
+version = "0.1.0"
+# torch: install the CPU build.
+dependencies = [
+    "numpy",
+    "scipy",
+    "pyyaml",
+    "joblib",
+    "pandas",
+    "pyarrow",
+    "psutil",
+    "torch",
+    "nibabel",
+    "nilearn",
+    "pot",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
