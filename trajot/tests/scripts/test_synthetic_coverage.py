@@ -91,7 +91,10 @@ def test_plant_and_fit_smoke_shapes(script, tmp_path) -> None:
     required = [
         "coverage_90",
         "coverage_80",
+        "coverage_90_raw",
         "auroc_tau",
+        "auroc_entropy",
+        "auroc_row_entropy",
         "heldout_ours",
         "heldout_noalign",
         "group_neff",
@@ -103,15 +106,18 @@ def test_plant_and_fit_smoke_shapes(script, tmp_path) -> None:
         "recovery_error_emd_to_C_pop",
         "coupling_recovery_ours_full",
         "coupling_recovery_random",
+        "template_scale_bar_to_pop_hat",
         "sota_bar",
         "notes",
+        "uncertainty",
     ]
     for key in required:
         assert key in payload, key
-        if key not in ("sota_bar", "notes"):
+        if key not in ("sota_bar", "notes", "uncertainty"):
             val = payload[key]
             if val is not None:
                 assert np.isfinite(float(val)), key
+    assert isinstance(payload["uncertainty"], dict)
     assert 0.0 <= payload["coverage_90"] <= 1.0
     assert 0.0 <= payload["auroc_tau"] <= 1.0
     assert payload["coupling_recovery_ours_full"] >= 0.0

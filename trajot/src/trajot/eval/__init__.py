@@ -44,11 +44,16 @@ from .permutation import (
 )
 from .uncertainty import (
     UNCERTAINTY_KEYS,
+    barycentric_map_variance,
     heldout_predictive_score,
+    mean_row_entropy,
     nonident_auroc,
     posterior_coverage,
+    scale_template_frobenius,
     shrinkage_transform,
     subject_mean_tau,
+    subject_row_entropies,
+    temperature_calibrated_coverage,
 )
 
 __all__ = [
@@ -89,4 +94,9 @@ __all__ = [
     "nonident_auroc",
     "heldout_predictive_score",
     "subject_mean_tau",
+    "scale_template_frobenius",
+    "mean_row_entropy",
+    "subject_row_entropies",
+    "barycentric_map_variance",
+    "temperature_calibrated_coverage",
 ]

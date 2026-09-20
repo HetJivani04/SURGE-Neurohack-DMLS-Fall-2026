@@ -22,11 +22,16 @@ import numpy as np
 
 __all__ = [
     "UNCERTAINTY_KEYS",
+    "barycentric_map_variance",
     "heldout_predictive_score",
+    "mean_row_entropy",
     "nonident_auroc",
     "posterior_coverage",
+    "scale_template_frobenius",
     "shrinkage_transform",
     "subject_mean_tau",
+    "subject_row_entropies",
+    "temperature_calibrated_coverage",
 ]
 
 UNCERTAINTY_KEYS = (
@@ -93,6 +98,198 @@ def posterior_coverage(
     hi = np.quantile(draws, 1.0 - alpha / 2.0, axis=0)
     inside = (star >= lo) & (star <= hi)
     return float(np.mean(inside))
+
+
+def scale_template_frobenius(
+    C_bar: np.ndarray,
+    C_ref: np.ndarray,
+) -> tuple[np.ndarray, float]:
+    """Rescale a learned template so ``||C_bar_scaled||_F = ||C_ref||_F``.
+
+    ``C_bar = B B^T`` after ``B_max_row_norm`` is often an order of magnitude
+    smaller than the empirical population connectome. Using the raw ``C_bar``
+    as an OT / Procrustes target puts subject maps in the wrong metric.
+    Returns ``(C_bar * scale, scale)``.
+    """
+    C_bar = np.asarray(C_bar, dtype=np.float64)
+    C_ref = np.asarray(C_ref, dtype=np.float64)
+    if C_bar.shape != C_ref.shape:
+        raise ValueError(f"shape mismatch: C_bar {C_bar.shape} vs C_ref {C_ref.shape}")
+    n_bar = float(np.linalg.norm(C_bar, ord="fro"))
+    n_ref = float(np.linalg.norm(C_ref, ord="fro"))
+    if n_bar <= 0.0:
+        raise ValueError("C_bar Frobenius norm is zero; cannot rescale")
+    scale = n_ref / n_bar
+    return C_bar * scale, scale
+
+
+def _row_stochastic_rows(pi: np.ndarray) -> np.ndarray:
+    P = np.asarray(pi, dtype=np.float64)
+    if P.ndim != 2 or P.shape[0] == 0:
+        raise ValueError(f"pi must be non-empty 2D, got {P.shape}")
+    row = np.maximum(P.sum(axis=1, keepdims=True), 1e-12)
+    return P / row
+
+
+def mean_row_entropy(pi: np.ndarray) -> float:
+    """Mean row entropy (nats) of a coupling after row-normalization.
+
+    Sharp (near-permutation) maps have entropy near 0; 50/50 mixtures of two
+    permutations have entropy near ``log 2``. This is the pre-registered
+    *assignment* uncertainty score — not Sinkhorn ``tau_phi``.
+    """
+    P = _row_stochastic_rows(pi)
+    ent = -(P * np.log(np.clip(P, 1e-300, None))).sum(axis=1)
+    return float(np.mean(ent))
+
+
+def subject_row_entropies(pi_bars: Sequence[np.ndarray]) -> np.ndarray:
+    """``(S,)`` mean row entropy per subject from pooled posterior-mean couplings."""
+    return np.asarray([mean_row_entropy(p) for p in pi_bars], dtype=np.float64)
+
+
+def barycentric_map_variance(pi_draws: np.ndarray) -> float:
+    """Mean across vertices of the variance of the barycentric template index.
+
+    For draws ``(M, V, K)``, the barycentric map of draw ``m`` is
+    ``E[k | v] = sum_k P_m[v, k] * k`` under row-stochastic ``P_m``. High
+    variance means the posterior moves mass across template nodes (alignment
+    ambiguity); a collapsed sharp posterior has near-zero variance.
+    """
+    draws = np.asarray(pi_draws, dtype=np.float64)
+    if draws.ndim != 3:
+        raise ValueError(f"pi_draws must be (M,V,K), got {draws.shape}")
+    M = draws.shape[0]
+    if M < 2:
+        return 0.0
+    P = draws / np.maximum(draws.sum(axis=2, keepdims=True), 1e-12)
+    idx = np.arange(draws.shape[2], dtype=np.float64)
+    bc = P @ idx  # (M, V)
+    return float(np.mean(np.var(bc, axis=0)))
+
+
+def _coverage_at_temperature(
+    draws: np.ndarray,
+    star: np.ndarray,
+    alpha: float,
+    temperature: float,
+    half_floor: float,
+) -> tuple[float, np.ndarray, np.ndarray]:
+    mean = draws.mean(axis=0)
+    lo = np.quantile(draws, alpha / 2.0, axis=0)
+    hi = np.quantile(draws, 1.0 - alpha / 2.0, axis=0)
+    half = np.maximum.reduce([
+        (hi - lo) / 2.0,
+        np.abs(mean - lo),
+        np.abs(hi - mean),
+        np.full_like(mean, half_floor),
+    ])
+    lo_t = mean - temperature * half
+    hi_t = mean + temperature * half
+    cov = float(np.mean((star >= lo_t) & (star <= hi_t)))
+    return cov, lo_t, hi_t
+
+
+def temperature_calibrated_coverage(
+    draws_by_subject: Sequence[np.ndarray],
+    stars_by_subject: Sequence[np.ndarray],
+    *,
+    alpha: float = 0.1,
+    target: float = 0.90,
+    cal_subjects: Sequence[int] | None = None,
+    halfwidth_floor_frac: float = 0.25,
+    temperature_grid: Sequence[float] | None = None,
+) -> dict[str, float | bool]:
+    """Held-out temperature calibration of empirical coupling coverage.
+
+    Scientific caveat (calibration debt, not Bayes)
+    -----------------------------------------------
+    The Sinkhorn entropy Jacobian is **detached** in ``trajot.inference.train``,
+    so posterior ``pi`` draws are overconfident: raw quantile intervals miss
+    planted ``P*`` almost everywhere. This helper expands quantile half-widths
+    by a scalar ``T`` fit on calibration subjects, then reports coverage on
+    held-out subjects. Intervals are in the **same space** as the planted
+    object (pooled posterior draws vs ``pi_star``), never mixed across spaces.
+
+    Half-width floor: ``halfwidth_floor_frac / R`` with ``R = star.shape[-1]``,
+    so collapsed (zero-width) posteriors still have measurable intervals.
+
+    Odd subjects are evaluation by default; even subjects are calibration.
+    """
+    if not 0.0 < alpha < 1.0:
+        raise ValueError(f"alpha must be in (0, 1), got {alpha}")
+    if len(draws_by_subject) != len(stars_by_subject):
+        raise ValueError("draws and stars must have the same number of subjects")
+    n = len(draws_by_subject)
+    if n == 0:
+        raise ValueError("empty subject list")
+    draws_list = [np.asarray(d, dtype=np.float64) for d in draws_by_subject]
+    stars = [np.asarray(s, dtype=np.float64) for s in stars_by_subject]
+    for i, (d, s) in enumerate(zip(draws_list, stars)):
+        if d.ndim < 2 or d.shape[1:] != s.shape:
+            raise ValueError(f"subject {i}: draws {d.shape} vs star {s.shape}")
+        if d.shape[0] == 0:
+            raise ValueError(f"subject {i}: no draws")
+    R = int(stars[0].shape[-1])
+    half_floor = float(halfwidth_floor_frac) / float(max(R, 1))
+    if cal_subjects is None:
+        cal_idx = [i for i in range(n) if i % 2 == 0]
+        eval_idx = [i for i in range(n) if i % 2 == 1]
+    else:
+        cal_idx = [int(i) for i in cal_subjects]
+        eval_idx = [i for i in range(n) if i not in set(cal_idx)]
+    if not cal_idx or not eval_idx:
+        # Degenerate split: calibrate and report on the same subjects (flagged).
+        cal_idx = list(range(n))
+        eval_idx = list(range(n))
+
+    raw_cal = [
+        posterior_coverage(draws_list[i], stars[i], alpha=alpha) for i in cal_idx
+    ]
+    raw_eval = [
+        posterior_coverage(draws_list[i], stars[i], alpha=alpha) for i in eval_idx
+    ]
+
+    def mean_cov_at(t: float, idxs: Sequence[int]) -> float:
+        vals = [
+            _coverage_at_temperature(draws_list[i], stars[i], alpha, t, half_floor)[0]
+            for i in idxs
+        ]
+        return float(np.mean(vals)) if vals else 0.0
+
+    if temperature_grid is None:
+        grid = np.concatenate([
+            np.array([0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0]),
+            np.geomspace(10.0, 200.0, num=12),
+        ])
+    else:
+        grid = np.asarray(list(temperature_grid), dtype=np.float64)
+    best_t = 1.0
+    best_err = float("inf")
+    for t in grid:
+        cov = mean_cov_at(float(t), cal_idx)
+        err = abs(cov - float(target))
+        if err < best_err - 1e-12 or (abs(err - best_err) <= 1e-12 and t < best_t):
+            best_err = err
+            best_t = float(t)
+
+    cov_eval = mean_cov_at(best_t, eval_idx)
+    cov_cal = mean_cov_at(best_t, cal_idx)
+    in_band = bool(0.85 <= cov_eval <= 0.95)
+    return {
+        "coverage_eval": cov_eval,
+        "coverage_cal": cov_cal,
+        "coverage_raw_eval": float(np.mean(raw_eval)) if raw_eval else 0.0,
+        "coverage_raw_cal": float(np.mean(raw_cal)) if raw_cal else 0.0,
+        "temperature": best_t,
+        "halfwidth_floor": half_floor,
+        "target": float(target),
+        "alpha": float(alpha),
+        "n_cal": len(cal_idx),
+        "n_eval": len(eval_idx),
+        "in_pre_registered_band": in_band,
+        "calibration_is_bayes": False,
+    }
 
 
 def _average_ranks(scores: np.ndarray) -> np.ndarray:

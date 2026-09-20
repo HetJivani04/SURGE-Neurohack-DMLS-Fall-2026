@@ -44,7 +44,9 @@ from trajot.runlog.parallel import pick_device, setup_threads
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_COHORT = PROJECT_ROOT / "results" / "tables" / "frozen_cohort_n49.txt"
 DEFAULT_TABLES = PROJECT_ROOT / "results" / "tables"
-BETA_REAL = 29.189086229914952
+BETA_N49 = 29.189086229914952
+BETA_N83 = 28.438323293411973
+BETA_REAL = BETA_N49
 PAIRS_SEED = 2026
 N_PAIRS = 500
 
@@ -79,13 +81,15 @@ def load_cohort(
     subjects: list[str] | None = None,
     *,
     load_ts: bool = True,
+    cohort_file: Path | None = None,
 ) -> tuple[list[str], np.ndarray, np.ndarray, dict[str, Any]]:
     """Load two-run connectomes (and optional timeseries) for the frozen cohort."""
     data_root = Path(data_root)
     manifest = read_manifest(data_root)
     if subjects is None:
-        if DEFAULT_COHORT.is_file():
-            subjects = [ln.strip() for ln in DEFAULT_COHORT.read_text().splitlines() if ln.strip()]
+        cohort_path = Path(cohort_file) if cohort_file is not None else DEFAULT_COHORT
+        if cohort_path.is_file():
+            subjects = [ln.strip() for ln in cohort_path.read_text().splitlines() if ln.strip()]
         else:
             counts = manifest.groupby("subject_id")["run_id"].apply(set)
             subjects = sorted(s for s, runs in counts.items() if len(runs) >= 2)
@@ -350,6 +354,7 @@ def fit_and_transform(
     lambda_source: str | None = None,
     c_pop_mix: float | None = None,
     hierarchical_pi_shrink: bool | None = None,
+    beta_target: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, Any], list[np.ndarray] | None]:
     method = get_baseline(method_name)
     if transform_mode is not None and hasattr(method, "transform_mode"):
@@ -368,7 +373,7 @@ def fit_and_transform(
     extra: dict[str, Any] = {
         "subjects": list(subjects),
         "data_root": str(data_root),
-        "beta_target": BETA_REAL,
+        "beta_target": float(beta_target if beta_target is not None else BETA_REAL),
     }
     if artifacts is not None:
         extra["run_dir"] = str(artifacts)
@@ -583,13 +588,16 @@ def _verdict(rows: list[dict[str, Any]], group: dict[str, Any] | None) -> dict[s
 def render_markdown(payload: dict[str, Any]) -> str:
     rows = payload["methods"]
     v = payload["verdict"]
+    n_subj = payload.get("n_subjects", "?")
+    table_name = payload.get("table", "REAL_gap_sota")
     lines = [
-        "# REAL N=49 gap-filling + SOTA table (corrected protocol)",
+        f"# {table_name} gap-filling + SOTA table (corrected protocol)",
         "",
         f"- data_root: `{payload['data_root']}`",
-        f"- n_subjects: {payload['n_subjects']} (frozen cohort 015–063)",
-        f"- beta: {payload['beta']} (real scan-rescan)",
+        f"- n_subjects: {n_subj}",
+        f"- beta: {payload.get('beta')} (n49 ref {payload.get('beta_n49_reference')}; n83 ref {payload.get('beta_n83_reference')})",
         f"- pairs: {payload['n_pairs']} seed {payload['pairs_seed']}",
+        f"- permutations_B: {payload.get('permutations_B')}",
         f"- ours artifacts: `{payload.get('ours_artifacts')}`",
         f"- transform paths: {payload.get('transform_paths')}",
         f"- metric protocol: **{v.get('metric_protocol', 'same_map_both_runs')}** — "
@@ -716,11 +724,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ours-artifacts", type=Path, default=PROJECT_ROOT / "runs" / "10_ours_full__73533e35__20260920T074217Z" / "artifacts")
     parser.add_argument("--ablated-artifacts", type=Path, default=None)
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_TABLES)
+    parser.add_argument("--out-stem", type=str, default="REAL_n49_gap_sota",
+                        help="output basename for .json/.md (e.g. REAL_n83_gap_sota)")
+    parser.add_argument("--cohort-file", type=Path, default=None,
+                        help="subject-id list (default: frozen_cohort_n49.txt)")
+    parser.add_argument("--subjects", type=str, default=None,
+                        help="comma-separated subject ids (overrides cohort file)")
+    parser.add_argument("--beta", type=float, default=BETA_REAL,
+                        help="scan-rescan beta for this cohort (N=49: 29.189; N=83: 28.438)")
+    parser.add_argument("--permutations-B", type=int, default=200,
+                        help="permutation count recorded in the table (use 200 if 10000 too slow)")
     parser.add_argument("--methods", type=str, default="noalign,brainsync,fugw,conn_srm,ours")
     parser.add_argument("--n-pairs", type=int, default=N_PAIRS)
     parser.add_argument("--skip-ts", action="store_true", help="skip timeseries load (brainsync may no-op)")
     parser.add_argument("--group-subjects", type=int, default=12, help="subjects for group REML smoke on large posteriors")
     parser.add_argument("--full-fugw", action="store_true", help="allow slow FUGW on all subjects")
+    parser.add_argument("--fugw-limit", type=int, default=None,
+                        help="cap FUGW subject count (default: 15 unless --full-fugw)")
     args = parser.parse_args(argv)
 
     setup_threads("outer", n_jobs=1)
@@ -728,10 +748,25 @@ def main(argv: list[str] | None = None) -> int:
 
     data_root = Path(args.data_root)
     cfg = build_cfg(data_root)
-    print(f"real_gap_sota: data_root={data_root}", flush=True)
+    beta_use = float(args.beta)
+    subjects_arg = (
+        [s.strip() for s in args.subjects.split(",") if s.strip()]
+        if args.subjects
+        else None
+    )
+    print(
+        f"real_gap_sota: data_root={data_root} beta={beta_use} "
+        f"cohort={args.cohort_file or args.subjects or 'default'}",
+        flush=True,
+    )
 
     t0 = time.time()
-    subjects, run1, run2, bundle = load_cohort(data_root, load_ts=not args.skip_ts)
+    subjects, run1, run2, bundle = load_cohort(
+        data_root,
+        subjects=subjects_arg,
+        load_ts=not args.skip_ts,
+        cohort_file=args.cohort_file,
+    )
     ts_map = bundle["timeseries"]
     print(f"loaded N={len(subjects)} R={run1.shape[1]} in {time.time()-t0:.1f}s", flush=True)
 
@@ -785,7 +820,13 @@ def main(argv: list[str] | None = None) -> int:
     if "brainsync" in wanted and timeseries is not None:
         method_plan.append({"name": "brainsync", "method": "brainsync"})
     if "fugw" in wanted:
-        method_plan.append({"name": "fugw", "method": "fugw", "limit": None if args.full_fugw else 15})
+        if args.full_fugw:
+            fugw_limit = None
+        elif args.fugw_limit is not None:
+            fugw_limit = int(args.fugw_limit)
+        else:
+            fugw_limit = 15
+        method_plan.append({"name": "fugw", "method": "fugw", "limit": fugw_limit})
     if "conn_srm" in wanted:
         method_plan.append({"name": "conn_srm", "method": "conn_srm"})
     if "ours" in wanted and args.ours_artifacts is not None and Path(args.ours_artifacts).exists():
@@ -884,6 +925,7 @@ def main(argv: list[str] | None = None) -> int:
                 tau0_auto=spec.get("tau0_auto"),
                 lambda_source=spec.get("lambda_source"),
                 c_pop_mix=spec.get("c_pop_mix"),
+                beta_target=beta_use,
             )
         except Exception as exc:
             rows.append(
@@ -948,15 +990,31 @@ def main(argv: list[str] | None = None) -> int:
         group = run_group_on_artifacts(art, subjects=g_subjects)
         print(f"group: { {k: group.get(k) for k in ('n_subjects','n_eff','ci_ratio','error') if group} }", flush=True)
 
+    # Honest coverage note when artifacts lack pi_means for every subject
+    ours_rows = [r for r in rows if str(r.get("method", "")).startswith("ours")]
+    for r in ours_rows:
+        m = r.get("meta") or {}
+        path = str(m.get("transform") or "")
+        n_pi = m.get("n_pi_means")
+        if path and path != "posterior_shrink_tau_gated":
+            r["artifacts_note"] = (
+                f"transform={path}; artifacts cover {n_pi}/{len(subjects)} subjects "
+                f"— posterior_shrink requires pi_means for every scored subject"
+            )
+
     verdict = _verdict(rows, group)
     payload = {
-        "table": "REAL_n49_gap_sota",
+        "table": str(args.out_stem),
         "data_root": str(data_root),
         "n_subjects": len(subjects),
         "subjects": subjects,
-        "beta": BETA_REAL,
+        "beta": beta_use,
+        "beta_n49_reference": BETA_N49,
+        "beta_n83_reference": BETA_N83,
         "n_pairs": args.n_pairs,
         "pairs_seed": PAIRS_SEED,
+        "permutations_B": int(args.permutations_B),
+        "cohort_file": str(args.cohort_file) if args.cohort_file else None,
         "ours_artifacts": str(args.ours_artifacts) if args.ours_artifacts else None,
         "transform_paths": transform_paths,
         "methods": rows,
@@ -964,13 +1022,18 @@ def main(argv: list[str] | None = None) -> int:
         "verdict": verdict,
         "created_unix": time.time(),
         "runtime_sec": time.time() - t0,
-        "notes": "PRIMARY real-data table. Synthetic planted-GT is secondary.",
+        "notes": (
+            "PRIMARY real-data table. Synthetic planted-GT is secondary. "
+            "Protocol: same Q_s on BOTH runs; reliability_after / gain_after / ident_after. "
+            f"permutations_B={args.permutations_B} (production target 10000 when runtime allows)."
+        ),
     }
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    json_path = out_dir / "REAL_n49_gap_sota.json"
-    md_path = out_dir / "REAL_n49_gap_sota.md"
+    out_stem = str(args.out_stem)
+    json_path = out_dir / f"{out_stem}.json"
+    md_path = out_dir / f"{out_stem}.md"
     json_path.write_text(json.dumps(payload, indent=2) + "\n")
     md_path.write_text(render_markdown(payload))
     print(f"wrote {json_path}", flush=True)
