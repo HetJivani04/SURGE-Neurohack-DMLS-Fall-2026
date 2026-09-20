@@ -123,17 +123,22 @@ From real posteriors (`group_real_n49.json`, `REAL_sota_stats.json` gap block):
 
 ---
 
-## 5. Coupling recovery as alignment SOTA (synthetic sidecar)
+## 5. Coupling recovery + identifiability ranking (synthetic planted-GT sidecar)
 
-Planted-GT synthetic (`synthetic_gap_results.json`):
+Planted-GT synthetic (`synthetic_gap_results.json`, v2; N=60, R=K=50, β=29.189, M=20, epochs=10):
 
 | Metric | ours_full | point / EMD→C_pop | FUGW | random |
 |---|---:|---:|---:|---:|
 | **coupling_recovery** (assignment of planted π*) | **0.70** | 0.03 | 0.028 | 0.02 |
+| **AUROC(ambiguity)** via posterior row-entropy of π̄ | **1.00** | — (no posterior) | — | 0.5 |
+| AUROC via Sinkhorn τ_φ (legacy) | 0.00 | — | — | 0.5 |
 
-**Why coupling recovery, not reconstruction error:** under the generative model `C_s = C_true + E`, the Bayes-optimal estimator of `C_true` from `C_s` without a perfect map is the identity — reconstruction error to noisy connectomes rewards doing nothing. The fair alignment metric is recovery of the **map** (posterior coupling / assignment vs planted P*). On that metric ours_full beats point-OT/EMD/FUGW by a wide margin (0.70 vs ≈0.03).
+**Why coupling recovery, not reconstruction error:** under the generative model `C_s = C_true + E`, the Bayes-optimal estimator of `C_true` from `C_s` without a perfect map is the identity — reconstruction error to noisy connectomes rewards doing nothing (`recovery_error_noalign` = 6.49 is the noise floor; every aligner is ≈20 because imperfect maps move away from the identity). The fair alignment metric is recovery of the **map** (posterior coupling / assignment vs planted P*). On that metric ours_full beats point-OT/EMD/FUGW by a wide margin (0.70 vs ≈0.03).
 
-**Do not headline coverage:** coverage@0.9 ≈ 0.004 and AUROC(τ) = 0 on the synthetic plant — entropy/τ scale calibration FAIL. Those numbers are reported, not sold.
+**Identifiability ranking works — through entropy, not τ.** Planted-ambiguous subjects (0.5 P₁ + 0.5 P₂) are ranked perfectly by the **posterior row-entropy of π̄** (AUROC = 1.00; ambiguous mean entropy 0.976 vs sharp 0.204). Sinkhorn τ_φ is *inverted* on this plant (AUROC = 0.00) because it is a noise scale on encoder scores, not an ambiguity measure — the uncertainty column that carries identifiability is the assignment entropy.
+
+**Coverage: reported, not sold.** Raw quantile coverage of planted P* is 0.004 — the detached entropy Jacobian makes posterior draws overconfident. A held-out temperature-calibrated interval reaches 0.973, which is a calibration device, **not** Bayes coverage; `coverage_is_bayes=false` in the artifact. Do not cite coverage as a calibrated result until the Jacobian term is wired.
+
 
 ---
 
