@@ -302,10 +302,11 @@ def evaluate_method(
     Keys are ``METHOD_KEYS`` plus evaluator diagnostics
     (``status``, ``transforms_applied``, ``transform_diagnostics``,
     and ``fit_error`` when fit/transform raised). On fit/transform
-    failure the method is marked ``status="identity_fallback"`` with
+    failure the method is marked ``status="failed"`` with
     null score columns — never scored as a successful noalign run.
-    Successful transforms always report ``transforms_applied=True``
-    plus ``transform_diagnostics`` (max_abs_diff / feat_corr).
+    Successful transforms report ``status="ok"``,
+    ``transforms_applied`` True only when aligned outputs differ from
+    the raw runs, plus ``transform_diagnostics`` (max_abs_diff / feat_corr).
     """
     if method is None:
         method_key, method = _resolve_method(name)
@@ -342,7 +343,7 @@ def evaluate_method(
             "nonidentifiable_pairs": None,
             "per_pair_uncertainty": None,
             "per_pair_flags": None,
-            "status": "identity_fallback",
+            "status": "failed",
             "transforms_applied": False,
             "transform_diagnostics": transform_diagnostics,
             "fit_error": fit_error,
@@ -350,7 +351,7 @@ def evaluate_method(
         }
 
     transform_diagnostics = _transform_diagnostics(aligned1, aligned2, run1, run2)
-    transforms_applied = True
+    transforms_applied = _aligned_changed(aligned1, aligned2, run1, run2)
     status = "ok"
 
     B = int(cfg.get("eval.permutations.B") or 1000)

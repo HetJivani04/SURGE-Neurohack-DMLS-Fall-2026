@@ -22,13 +22,15 @@ PLAN_METHOD_KEYS = {
 
 def _expected_method_keys() -> set[str]:
     try:
-        from trajot.eval.metrics import METHOD_KEYS
+        from trajot.eval.metrics import DIAGNOSTIC_METHOD_KEYS, METHOD_KEYS
 
         if "null_max" in set(METHOD_KEYS):
-            return set(METHOD_KEYS)
+            # evaluate always emits core D7 keys plus always-on diagnostics.
+            # fit_error is failure-only and is omitted on success.
+            return set(METHOD_KEYS) | (set(DIAGNOSTIC_METHOD_KEYS) - {"fit_error"})
     except Exception:
         pass
-    return set(PLAN_METHOD_KEYS)
+    return set(PLAN_METHOD_KEYS) | {"status", "transforms_applied", "transform_diagnostics"}
 
 
 def _expected_top_keys() -> set[str]:

@@ -62,7 +62,7 @@ The protocol declares the subsample before any run: 500 ordered subject pairs, d
 
 ## 2. Track A: cross-run identification — ceiling diagnosis
 
-**What Track A reports.** For each method, accuracy of identifying a subject's run-2 connectome among the two-run subjects from run 1, with a binomial CI and a permutation p-value against the label-shuffled null. Chance at N=49 is ≈ 0.020. Under the production protocol the null uses 10,000 permutations; this pilot used B=200 (minimum p ≈ 0.0050).
+**What Track A reports.** For each method, accuracy of identifying a subject's run-2 connectome among the two-run subjects from run 1, with a binomial CI and a permutation p-value against the label-shuffled null. Chance at N=49 is ≈ 0.020. Under the production protocol the null uses a 10,000-permutation draw; this pilot used B=200 (minimum p ≈ 0.0050).
 
 **Outcome: raw connectomes are already at ceiling.** No-alignment and BrainSync both score **0.959** (≈ 47/49; self-pair correlation ≈ 0.67 vs cross-subject ≈ 0.46 on raw Schaefer-100 features). FUGW is slightly below at 0.918. `ours_full` is 0.857. **TrajOT does not win Track A.** There is no headroom for any alignment method to *improve* identification at this parcellation and cohort size: any nontrivial template-directed transform can only spend fingerprint variance.
 

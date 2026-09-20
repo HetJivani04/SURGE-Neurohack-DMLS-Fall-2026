@@ -129,10 +129,12 @@ def test_overrides_and_flags_change_the_run_identity(entry, exp_path, project):
 
 
 def test_debug_flag_allows_small_pair_counts(entry, exp_path, project):
-    args = ["--config", str(exp_path()), "--dry-run", "--override", "eval.pairs.n=20"]
+    args = ["--config", str(exp_path()), "--dry-run", "--override", "eval.pairs.n=20",
+            "--override", "run.debug=false"]
     with pytest.raises(ConfigError, match="eval.pairs.n"):
         entry.main(args)
-    assert entry.main([*args, "--debug"]) == 0
+    debug_args = ["--config", str(exp_path()), "--dry-run", "--override", "eval.pairs.n=20", "--debug"]
+    assert entry.main(debug_args) == 0
     (run_dir,) = run_dirs(project)
     assert json.loads((run_dir / "metrics.json").read_text())["n_pairs"] == 20
 

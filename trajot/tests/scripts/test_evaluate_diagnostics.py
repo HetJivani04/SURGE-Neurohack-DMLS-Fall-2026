@@ -117,7 +117,7 @@ def evaluate_mod(tmp_path):
 
 
 def test_failed_fit_surfaces_fit_error_and_identity_fallback(tmp_path, evaluate_mod):
-    """When fit raises, metrics must carry fit_error + status=identity_fallback."""
+    """When fit raises, metrics must carry fit_error + status=failed."""
     cfg = _cfg(tmp_path)
     run1, run2, subjects = _toy_data()
 

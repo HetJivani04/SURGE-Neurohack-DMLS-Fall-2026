@@ -1,0 +1,54 @@
+[
+  {
+    "run_id": "00_noalign__eebd2f8e__20260920T093535Z",
+    "method": "noalign",
+    "n_subjects": 49,
+    "ident_accuracy": 0.9591836734693877,
+    "alignment_gain": 0.0,
+    "nonidentifiable_pairs": 500,
+    "perm_p": 0.004975124378109453,
+    "data_hash": "bab58d068885a900",
+    "notes": "per_pair_uncertainty unfilled",
+    "K": 100,
+    "epochs": 100
+  },
+  {
+    "run_id": "01_brainsync__b4f31914__20260920T093548Z",
+    "method": "brainsync",
+    "n_subjects": 49,
+    "ident_accuracy": 0.9591836734693877,
+    "alignment_gain": -4.6537555730175154e-05,
+    "nonidentifiable_pairs": 469,
+    "perm_p": 0.004975124378109453,
+    "data_hash": "bab58d068885a900",
+    "notes": "per_pair_uncertainty unfilled",
+    "K": 100,
+    "epochs": 100
+  },
+  {
+    "run_id": "02_fugw__cf2f95f4__20260920T093601Z",
+    "method": "fugw",
+    "n_subjects": 49,
+    "ident_accuracy": 0.9183673469387755,
+    "alignment_gain": -0.004947090344352626,
+    "nonidentifiable_pairs": 466,
+    "perm_p": 0.004975124378109453,
+    "data_hash": "bab58d068885a900",
+    "notes": "per_pair_uncertainty unfilled",
+    "K": 100,
+    "epochs": 100
+  },
+  {
+    "run_id": "03_conn_srm__0777ce05__20260920T093617Z",
+    "method": "conn_srm",
+    "n_subjects": 49,
+    "ident_accuracy": 0.08163265306122448,
+    "alignment_gain": 0.3954539023443999,
+    "nonidentifiable_pairs": 467,
+    "perm_p": 0.01990049751243781,
+    "data_hash": "bab58d068885a900",
+    "notes": "per_pair_uncertainty unfilled",
+    "K": 100,
+    "epochs": 100
+  }
+]

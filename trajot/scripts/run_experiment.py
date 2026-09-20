@@ -177,10 +177,10 @@ def _run_experiment_method(
         fit_error = meta.get("fit_error")
     status = stats.get("status")
     if status is None:
-        status = "identity_fallback" if fit_error else "ok"
+        status = "failed" if fit_error else "ok"
     transforms_applied = stats.get("transforms_applied")
     if transforms_applied is None:
-        transforms_applied = False if status == "identity_fallback" else True
+        transforms_applied = False if status == "failed" else True
 
     stripped = ev._strip_meta(stats)
     if "status" not in stripped:
@@ -211,7 +211,7 @@ def _run_experiment_method(
     if fit_error:
         notes_parts.append(str(fit_error))
     status = stats.get("status") or status
-    if status == "identity_fallback" or meta.get("fallback"):
+    if status == "failed" or meta.get("fallback"):
         notes_parts.append(f"fallback={meta.get('fallback') or 'identity'}")
         if status:
             notes_parts.append(f"status={status}")

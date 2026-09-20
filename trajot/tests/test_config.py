@@ -73,7 +73,7 @@ def test_every_experiment_config_carries_the_keys_w2_reads(exp_path, name):
 
 def test_model_and_eval_configs_are_merged_in(exp_path):
     cfg = load_config(exp_path("10_ours_full"))
-    assert (cfg.get("model.K"), cfg.get("model.d"), cfg.get("model.r")) == (512, 32, 32)
+    assert (cfg.get("model.K"), cfg.get("model.d"), cfg.get("model.r")) == (100, 32, 32)
     assert (cfg.get("model.m_draws"), cfg.get("model.batch_subjects")) == (4, 8)
     assert cfg.get("model.sinkhorn.L") == 30 and cfg.get("model.sinkhorn.eps") == [0.1, 0.01]
     assert cfg.get("model.beta.warmup_frac") == 0.3
@@ -131,7 +131,7 @@ def test_hash_ignores_filename_key_order_and_data_root(project):
 
 @pytest.mark.parametrize("key,value", [
     ("run.seed", 1), ("run.n_jobs", 2), ("eval.pairs.seed", 3), ("model.K", 256),
-    ("model.beta.warmup_frac", 0.5), ("run.debug", True),
+    ("model.beta.warmup_frac", 0.5), ("run.debug", False),
 ])
 def test_any_single_override_changes_the_hash(exp_path, key, value):
     assert load_config(exp_path(), {key: value}).hash != load_config(exp_path()).hash

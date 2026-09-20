@@ -33,11 +33,13 @@ def test_the_table_and_its_metadata_are_exactly_what_compare_rendered() -> None:
     assert len([line for line in TABLE.splitlines() if line.startswith("|")]) == 2 + 6  # header, rule, six rows
 
 
-def test_the_write_up_states_that_it_reports_no_result_and_does_not_invent_one() -> None:
-    assert has(RESULTS, "development phase", "reports no result", "not yet run", "experiment phase")
-    assert not re.search(r"\b0\.\d\d\s*\[", RESULTS)  # no "0.XX [CI]" cell was filled in
-    for cell in re.findall(r"^\|[^|]+\|([^|]+)\|", TABLE, flags=re.M)[2:]:
-        assert cell.strip() == "—"  # every result cell of the rendered table is empty
+def test_the_write_up_states_its_pilot_status_and_does_not_invent_wins() -> None:
+    assert has(RESULTS, "Phase 2 pilot", "does not invent")
+    assert has(RESULTS, "not yet run")  # scan-length sensitivity remains open
+    assert has(RESULTS, "10,000", "B = 200")
+    # Frozen pilot table cells are reported numbers, not empty placeholders.
+    cells = re.findall(r"^\|[^|]+\|([^|]+)\|", TABLE, flags=re.M)[2:]
+    assert any(cell.strip() not in ("—", "") for cell in cells)
 
 
 # ---- the claim-discipline appendix ------------------------------------------------------------------------
