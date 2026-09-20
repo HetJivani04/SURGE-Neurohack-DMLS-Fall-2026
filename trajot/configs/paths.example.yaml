@@ -5,4 +5,4 @@
 # configs/paths.yaml is git-ignored.
 
 data_root: /absolute/path/to/ds000243
-contract_version: "1"
+contract_version: "1.0.0"

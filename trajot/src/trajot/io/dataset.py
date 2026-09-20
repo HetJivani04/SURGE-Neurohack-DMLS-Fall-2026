@@ -38,19 +38,29 @@ class RunSpec:
     tr: float
 
 
-def read_bold_json(path: Path) -> dict[str, Any]:
+def read_bold_json(path: Path, require_slice_timing: bool = True) -> dict[str, Any]:
+    """Return the sidecar dict; ``RepetitionTime`` and ``EchoTime`` are always required.
+
+    ``SliceTiming`` (length 32) is required unless ``require_slice_timing=False``. The real
+    ds000243 sidecar has no ``SliceTiming`` key, so discovery reads it relaxed and the
+    pipeline derives the timing from ``preprocess.slice_order`` (see ``DATASET.md``); a
+    ``SliceTiming`` that is present is still validated.
+    """
+
     with path.open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
 
-    missing = [k for k in ("RepetitionTime", "SliceTiming", "EchoTime") if k not in payload]
+    required = ["RepetitionTime", "EchoTime"] + (["SliceTiming"] if require_slice_timing else [])
+    missing = [k for k in required if k not in payload]
     if missing:
         raise ValueError(f"Missing required sidecar key(s) in {path}: {', '.join(missing)}")
 
-    slice_timing = payload["SliceTiming"]
-    if not isinstance(slice_timing, list) or len(slice_timing) != 32:
-        raise ValueError(
-            f"SliceTiming must be a list of length 32 in {path}, found {type(slice_timing).__name__} with length {len(slice_timing) if isinstance(slice_timing, list) else 'n/a'}"
-        )
+    if "SliceTiming" in payload:
+        slice_timing = payload["SliceTiming"]
+        if not isinstance(slice_timing, list) or len(slice_timing) != 32:
+            raise ValueError(
+                f"SliceTiming must be a list of length 32 in {path}, found {type(slice_timing).__name__} with length {len(slice_timing) if isinstance(slice_timing, list) else 'n/a'}"
+            )
 
     return payload
 
@@ -74,7 +84,7 @@ def list_bold_runs(root: Path) -> list[RunSpec]:
 
         json_path = _resolve_sidecar(root, bold_path)
 
-        sidecar = read_bold_json(json_path)
+        sidecar = read_bold_json(json_path, require_slice_timing=False)
         tr = float(sidecar["RepetitionTime"])
 
         nii = nib.load(str(bold_path))
@@ -96,11 +106,26 @@ def list_bold_runs(root: Path) -> list[RunSpec]:
     return specs
 
 
-def iter_bold_chunks(spec: RunSpec, chunk: int = 20) -> Iterator[np.ndarray]:
-    """Yield (V_chunk, T) float32 slices from a 4D BOLD volume.
+def read_bold_geometry(spec: RunSpec) -> tuple[tuple[int, int, int, int], tuple[float, float, float], np.ndarray]:
+    """Header-only read: ``(shape (X, Y, Z, T), voxel size in mm, 4x4 voxel-to-world affine)``."""
 
-    This function streams across x-slices so the full run is never materialized as
-    float64. Chunk is interpreted as an approximate vertex count.
+    import nibabel as nib
+
+    image = nib.load(str(spec.bold_path))
+    if len(image.shape) != 4:
+        raise ValueError(f"Expected 4D BOLD NIfTI at {spec.bold_path}, found shape {image.shape}")
+    zooms = tuple(float(z) for z in image.header.get_zooms()[:3])
+    return tuple(int(n) for n in image.shape), zooms, np.asarray(image.affine, dtype=np.float64)
+
+
+def iter_bold_chunks(spec: RunSpec, chunk: int = 20) -> Iterator[np.ndarray]:
+    """Yield ``(V_chunk, T)`` float32 blocks of consecutive voxels of a 4D BOLD run.
+
+    Voxels are numbered in C order over ``(X, Y, Z)``, so concatenating the blocks gives the
+    flattened ``(X*Y*Z, T)`` run. The file is read once, sequentially, in its on-disk dtype
+    (int16 for ds000243), and each block is converted to float32 on its own, so the run is
+    never materialized as float64. ``chunk`` is the approximate number of voxels per block.
+    This is the only place a BOLD NIfTI is read.
     """
 
     try:
@@ -117,12 +142,9 @@ def iter_bold_chunks(spec: RunSpec, chunk: int = 20) -> Iterator[np.ndarray]:
         )
 
     nx, ny, nz, n_t = image.shape
-    dataobj = image.dataobj
+    raw = np.asanyarray(image.dataobj)
 
-    voxels_per_x = ny * nz
-    x_step = max(1, int(np.ceil(chunk / max(voxels_per_x, 1))))
-
+    x_step = max(1, int(np.ceil(chunk / max(ny * nz, 1))))
     for x0 in range(0, nx, x_step):
-        x1 = min(nx, x0 + x_step)
-        block = np.asarray(dataobj[x0:x1, :, :, :], dtype=np.float32)
+        block = np.asarray(raw[x0 : x0 + x_step], dtype=np.float32)
         yield block.reshape(-1, n_t)

@@ -7,6 +7,19 @@ includes:
   model: ../model/ablation_no_gauge.yaml
   eval: ../eval/default.yaml
 
+preprocess:
+  slice_order: interleaved_odd_first  # ds000243 sidecars carry no SliceTiming; see src/trajot/io/DATASET.md
+  bandpass:
+    low: 0.01
+    high: 0.1
+    order: 2
+  gsr: true
+  surface: fsaverage4
+  n_regions: 100
+  qc:
+    max_mean_fd_mm: 0.5
+    min_mask_dice: 0.75
+
 run:
   seed: 0
   n_jobs: 1

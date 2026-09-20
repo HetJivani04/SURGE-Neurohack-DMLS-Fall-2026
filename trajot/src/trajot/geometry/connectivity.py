@@ -85,7 +85,16 @@ def connectivity(ts: np.ndarray) -> np.ndarray:
 
 
 def rank_factorize(C: np.ndarray, r: int = 32) -> tuple[np.ndarray, np.ndarray]:
-    """Truncated eigen-factorization with PSD clipping for stable low-rank factors."""
+    """Truncated eigendecomposition ``C ~ A A^T`` with ``A`` ``(R, r)`` float64.
+
+    ``A A^T`` is positive semi-definite, so only positive eigenvalues can be represented: the
+    ``r`` largest are kept and negative ones are clipped to zero. The connectome ``C`` has a
+    zero diagonal, hence is indefinite (its eigenvalues sum to zero) and ``A A^T`` reproduces
+    only its positive part. The second return value is the retained-variance fraction, the
+    share of ``||C||_F^2`` carried by the kept eigenvalues, so that
+    ``||C - A A^T||_F / ||C||_F`` is about ``sqrt(1 - retained)`` (exact when the dropped
+    eigenvalues are all the negative ones plus the smaller positive ones).
+    """
 
     matrix = np.asarray(C, dtype=np.float64)
     if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
@@ -97,13 +106,10 @@ def rank_factorize(C: np.ndarray, r: int = 32) -> tuple[np.ndarray, np.ndarray]:
     evecs = evecs[:, order]
 
     r_eff = min(r, matrix.shape[0])
-    evals_r = evals[:r_eff]
-    evecs_r = evecs[:, :r_eff]
+    evals_r = np.clip(evals[:r_eff], a_min=0.0, a_max=None)
+    A = evecs[:, :r_eff] * np.sqrt(evals_r)[None, :]
 
-    evals_pos = np.clip(evals_r, a_min=0.0, a_max=None)
-    A = evecs_r * np.sqrt(evals_pos)[None, :]
-
-    total_pos = np.clip(evals, a_min=0.0, a_max=None).sum()
-    retained = evals_pos.sum() / total_pos if total_pos > 0 else 0.0
+    total = float((evals**2).sum())
+    retained = float((evals_r**2).sum()) / total if total > 0 else 0.0
 
     return A.astype(np.float64), np.float64(retained)
