@@ -21,10 +21,12 @@ ROOT = Path(__file__).resolve().parents[2]
 CPU = pick_device(prefer_mps=False)
 
 
-def make_cfg(V: int, epochs: int, gauge: bool = False, band: float = 0.0, r: int = 8, p: int = 48, blocks: int = 2) -> Config:
+def make_cfg(V: int, epochs: int, gauge: bool = False, band: float = 0.0, r: int = 8, p: int = 48, blocks: int = 2,
+             entropy_weight: float = 1.0) -> Config:
     return Config({"run": {"seed": 0}, "model": {
         "K": V, "d": 8, "r": r, "m_draws": 4, "batch_subjects": 8, "sinkhorn": {"L": 30, "eps": [0.1, 0.01]},
         "beta": {"warmup_frac": 0.3, "synthetic": 50.0}, "sigma_f2": 1.0, "gauge_features": gauge,
+        "entropy": {"weight": entropy_weight},
         "prior": {"sigma_B": 1.0, "sigma_F": 1.0, "F0": 0.0, "a_eps": 3.0, "b_eps": 0.4, "B_max_row_norm": 1.3},
         "encoder": {"p": p, "n_blocks": blocks, "heads": 4, "m_eigvecs": 4, "lambda_init": 1.0},
         "band": {"seconds": [10.0, 100.0], "bandwidth": 0.05, "weight": band}, "train": {"epochs": epochs, "lr": 0.003}}})
@@ -108,6 +110,7 @@ def test_prepare_subject_builds_the_model_inputs_from_a_contract_file(dataset: P
     assert sub.Y.shape == (V, 8 + 2) and sub.v.shape == (V, 8) and sub.M0.shape == (V, 32)
     assert sub.u.shape == (V, 8 + 2 + 4 + 2) and sub.u.dtype == np.float32
     assert (sub.M0 >= 0).all() and sub.M0.max() < 5
+    assert sub.anchor == "euclidean"
 
     X = d["timeseries"][sub.valid].astype(np.float64)
     corr = np.corrcoef(X)
@@ -116,11 +119,18 @@ def test_prepare_subject_builds_the_model_inputs_from_a_contract_file(dataset: P
     assert np.allclose(np.diag(sub.A @ sub.A.T), (sub.A**2).sum(1)) and (sub.A**2).sum(1).max() <= 1.0 + 1e-9
     assert prepare_subject(d, make_cfg(32, 1, gauge=False), nodes, 100.0).v is None
 
+    node_dist = np.linspace(0.1, 0.9, 32 * 32).reshape(32, 32)
+    geo = prepare_subject(d, cfg, nodes, 100.0, node_dist=node_dist)
+    assert geo.anchor == "geodesic"
+    assert np.allclose(geo.M0, node_dist[geo.valid])
+
 
 def test_load_train_data_trains_on_run_1_and_holds_run_2_out(dataset: Path) -> None:
     data = load_train_data(dataset, make_cfg(32, 1))
     assert len(data.train) == len(data.holdout) == 8 and data.beta_target == 50.0
     assert data.connectomes.shape == (8, 10, 10) and data.node_coords.shape == (32, 3)
+    assert data.anchor == "euclidean"  # synthetic contract files have no faces
+    assert all(sub.anchor == "euclidean" for sub in data.train)
     run1 = contract.read_subject_run(contract.subject_run_path(dataset, "001", "1"))["embedding"].astype(np.float64)
     run2 = contract.read_subject_run(contract.subject_run_path(dataset, "001", "2"))["embedding"].astype(np.float64)
     assert np.allclose(data.train[0].Y[:, :8], run1) and np.allclose(data.holdout[0].Y[:, :8], run2)
@@ -130,6 +140,18 @@ def test_load_train_data_trains_on_run_1_and_holds_run_2_out(dataset: Path) -> N
     assert [s.subject_id for s in subset.train] == ["002", "003"] and subset.beta_target == 7.5
     with pytest.raises(ValueError, match="no subjects"):
         load_train_data(dataset, make_cfg(32, 1), subjects=["999"])
+
+
+def test_load_train_data_prefers_geodesic_anchor_when_faces_are_available(dataset: Path) -> None:
+    V = 32
+    faces = np.array([[i, i + 1, i + 2] for i in range(V - 2)], dtype=np.int64)
+    deriv = dataset / "derivatives" / "trajot"
+    np.savez(deriv / "template_geometry.npz", faces=faces)
+    data = load_train_data(dataset, make_cfg(32, 1))
+    assert data.anchor == "geodesic"
+    assert all(sub.anchor == "geodesic" for sub in data.train)
+    assert (data.train[0].M0 >= 0).all() and data.train[0].M0.max() <= 1.0 + 1e-9
+    (deriv / "template_geometry.npz").unlink()
 
 
 # ---- the fit ---------------------------------------------------------------------------------------------
@@ -144,17 +166,29 @@ def test_a_smoke_fit_completes_on_cpu_and_returns_the_documented_result(dataset:
     assert result.params.F_bar.shape == (K, 10) and result.params.eps.shape == (S,) and (result.params.eps > 0).all()
     assert np.linalg.norm(result.params.B, axis=1).max() <= 1.3 + 1e-4  # the scale constraint
     assert len(result.pi_samples) == len(result.tau_phi) == S
+    assert result.anchor == "euclidean" and result.entropy_weight == 1.0
     for pi, tau, sub in zip(result.pi_samples, result.tau_phi, data.train):
         assert pi.shape == (M, V, K) and pi.dtype == np.float64 and tau.shape == (V,) and (tau > 0).all()
         assert np.allclose(pi.sum((1, 2)), 1.0, atol=1e-3)  # probability couplings
         assert np.abs(pi.sum(1) - 1 / K).max() < 1e-9  # the last Sinkhorn half-step makes the column marginals exact
         assert (np.abs(pi.sum(2) - sub.mu) / sub.mu).mean() < 0.15  # rows: close on average at eps = 0.01, L = 30
-    assert all(np.isfinite(e["total"]) and e["entropy"] == 0.0 for e in result.loss_trace)  # entropy dropped (first pass)
+    assert all(np.isfinite(e["total"]) and np.isfinite(e["entropy"]) for e in result.loss_trace)
+    assert any(e["entropy"] != 0.0 for e in result.loss_trace)  # entropy is wired, not hardcoded zero
     assert result.loss_trace[-1]["beta"] == pytest.approx(50.0) and result.loss_trace[-1]["eps"] > 0.01
     assert set(result.loss_trace[0]) >= {"gw", "feature", "prior", "entropy", "log_prior", "total", "beta", "eps", "tau_mean"}
 
     out = capsys.readouterr().out
-    assert "FIRST PASS" in out and "DROPPED" in out and out.count("epoch ") == 3  # the entropy caveat is in the run log
+    assert "entropy WIRED" in out and "shannon" in out.lower() and out.count("epoch ") == 3
+    assert result.entropy_estimator == "shannon_pi+hutchinson_slq"
+
+
+def test_entropy_is_nonzero_and_finite_on_a_short_synthetic_fit(dataset: Path) -> None:
+    cfg = make_cfg(32, 2)
+    result = train(cfg, load_train_data(dataset, cfg, subjects=["001", "002", "003"]), CPU)
+    entropies = [e["entropy"] for e in result.loss_trace]
+    assert all(np.isfinite(entropies))
+    assert any(abs(e) > 0.0 for e in entropies)
+
 
 
 @pytest.mark.parametrize("gauge", [False, True], ids=["ablation-no-gauge", "gauge-features"])
@@ -207,6 +241,9 @@ def test_save_artifacts_writes_the_posterior_tau_and_template(dataset: Path, tmp
         assert tau["sub-001"].shape == (32,)
     with np.load(out / "template.npz") as template:
         assert template["B"].shape == (32, 8) and template["eps"].shape == (2,) and list(template["subject_ids"]) == ["001", "002"]
+        assert str(template["anchor"]) == "euclidean"
+        assert float(template["entropy_weight"]) == pytest.approx(1.0)
+        assert str(template["entropy_estimator"]) == "shannon_pi+hutchinson_slq"
     assert json.loads((out / "loss_trace.json").read_text())[0]["epoch"] == 1
 
 
@@ -217,3 +254,20 @@ def test_no_reinforce_score_function_or_detach_anywhere_in_model_and_inference()
     pattern = re.compile(r"REINFORCE|score[- _]function|\.detach\(\)", re.IGNORECASE)
     assert [f.name for f in files if pattern.search(f.read_text())] == []
     assert len(files) > 10
+
+
+def test_gauge_and_band_docstrings_do_not_claim_temporal_dynamics() -> None:
+    from trajot.geometry import diffusion
+    from trajot.model import prior as prior_mod
+    from trajot.inference import train as train_mod
+
+    texts = [diffusion.gauge_velocity.__doc__ or "", diffusion.gauge_features.__doc__ or "",
+             prior_mod.band_prior.__doc__ or "", train_mod.__doc__ or ""]
+    banned = ("temporal velocity", "kinematic", "captures dynamics", "temporal/kinematic")
+    for text in texts:
+        lowered = text.lower()
+        for phrase in banned:
+            assert phrase not in lowered
+    assert "spatial" in (diffusion.gauge_velocity.__doc__ or "").lower()
+    assert "band prior" in (prior_mod.band_prior.__doc__ or "").lower()
+

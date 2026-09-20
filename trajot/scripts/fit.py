@@ -86,12 +86,16 @@ def main(argv: Iterable[str] | None = None) -> int:
         result = train(cfg, data, pick_device(prefer_mps=False) if args.synthetic else pick_device())
         save_artifacts(run_dir, result)
 
+        entropy_note = (
+            f"entropy wired: shannon_pi+hutchinson_slq (weight {result.entropy_weight:g}, "
+            f"anchor {result.anchor})"
+        )
         metrics = {
             "experiment": cfg.experiment, "run_id": run_id, "n_subjects": len(result.subject_ids),
             "n_pairs": cfg.get("eval.pairs.n"), "pairs_seed": cfg.get("eval.pairs.seed"),
             "permutations_B": cfg.get("eval.permutations.B"), "methods": {}, "beta": float(result.beta_target),
-            "notes": f"first-pass fit, entropy term dropped (tau_phi carries no uncertainty yet); {beta_note}; "
-                     f"final total {result.loss_trace[-1]['total']:.6g}",
+            "notes": f"fit with wired entropy term (tau_phi receives pathwise Shannon entropy); {entropy_note}; "
+                     f"{beta_note}; final total {result.loss_trace[-1]['total']:.6g}",
         }
         (run_dir / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n")
         logger.log("finished")

@@ -56,13 +56,16 @@ def test_a_synthetic_smoke_fit_writes_the_full_run_record(script, project) -> No
     assert set(metrics) == {"experiment", "run_id", "n_subjects", "n_pairs", "pairs_seed", "permutations_B",
                             "methods", "beta", "notes"}  # the metrics.json schema published by W0
     assert metrics["run_id"] == run.name and metrics["n_subjects"] == 6 and metrics["methods"] == {}
-    assert metrics["beta"] == 50.0 and "entropy term dropped" in metrics["notes"] and "synthetic" in metrics["notes"]
+    assert metrics["beta"] == 50.0 and "entropy wired" in metrics["notes"] and "synthetic" in metrics["notes"]
+    assert "shannon_pi+hutchinson_slq" in metrics["notes"] and "anchor euclidean" in metrics["notes"]
 
     log = (run / "log.txt").read_text()
-    assert "DROPPED" in log and log.count("epoch ") == 2 and "finished" in log  # the entropy caveat is in the run log
+    assert "entropy WIRED" in log and log.count("epoch ") == 2 and "finished" in log
     artifacts = sorted(p.name for p in (run / "artifacts").iterdir())
     assert artifacts == ["loss_trace.json", "posterior_samples.npz", "tau_phi.npz", "template.npz"]
     assert list(read_registry(project / "runs" / "index.csv")["status"]) == ["ok"]
+    trace = json.loads((run / "artifacts" / "loss_trace.json").read_text())
+    assert any(e["entropy"] != 0.0 for e in trace)
 
 
 def test_beta_is_never_calibrated_on_synthetic_data(script, project) -> None:

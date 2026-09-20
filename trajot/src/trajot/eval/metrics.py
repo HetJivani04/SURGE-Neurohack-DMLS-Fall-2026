@@ -21,11 +21,32 @@ METHOD_KEYS = {
     "ident_accuracy",
     "ident_ci",
     "perm_p",
+    "null_max",
     "alignment_gain",
     "nonidentifiable_pairs",
     "per_pair_uncertainty",
     "per_pair_flags",
 }
+
+# Columns baselines often cannot fill; Agent D serializes these as JSON null.
+OPTIONAL_METHOD_KEYS = {
+    "null_max",
+    "per_pair_uncertainty",
+    "ident_ci",
+    "perm_p",
+    "alignment_gain",
+    "nonidentifiable_pairs",
+    "per_pair_flags",
+    "ident_accuracy",
+}
+
+
+def method_metrics_template() -> dict[str, Any]:
+    """All method keys present with JSON-null values.
+
+    Use when a baseline cannot fill a column; never invent zeros.
+    """
+    return {key: None for key in sorted(METHOD_KEYS)}
 
 
 def validate_metrics_payload(payload: dict[str, Any]) -> None:
@@ -45,6 +66,19 @@ def validate_metrics_payload(payload: dict[str, Any]) -> None:
             raise ValueError(
                 f"method {method!r} keys mismatch; missing={sorted(missing)}, extra={sorted(extra)}"
             )
+        for key, value in stats.items():
+            if value is None:
+                continue
+            if key == "ident_accuracy" and not isinstance(value, (int, float)):
+                raise ValueError(f"method {method!r} ident_accuracy must be float or None")
+            if key == "perm_p" and not isinstance(value, (int, float)):
+                raise ValueError(f"method {method!r} perm_p must be float or None")
+            if key == "null_max" and not isinstance(value, (int, float)):
+                raise ValueError(f"method {method!r} null_max must be float or None")
+            if key == "alignment_gain" and not isinstance(value, (int, float)):
+                raise ValueError(f"method {method!r} alignment_gain must be float or None")
+            if key == "per_pair_uncertainty" and not isinstance(value, (int, float)):
+                raise ValueError(f"method {method!r} per_pair_uncertainty must be float or None")
 
 
 def write_metrics(path: Path, payload: dict[str, Any]) -> Path:

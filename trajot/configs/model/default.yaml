@@ -11,6 +11,8 @@ beta:
   warmup_frac: 0.3  # fraction of training over which beta is warmed up
   synthetic: 50.0   # fixed beta for synthetic fits: beta is never calibrated on synthetic data
 sigma_f2: 1.0       # feature noise variance
+entropy:
+  weight: 1.0       # scales the ELBO entropy bonus H[q(pi)] (pathwise Shannon + Hutchinson logdet)
 prior:
   sigma_B: 1.0
   sigma_F: 1.0

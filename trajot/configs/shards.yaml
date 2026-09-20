@@ -1,15 +1,25 @@
 # Subject shard assignments for distributed preprocessing.
+#
 # Each developer processes the subjects listed under their name.
-# Populate subject IDs from the local data directory:
+# Do NOT invent subject IDs in git. Populate only after listing real data:
+#
 #   ls data/ds000243/ | grep '^sub-' | sort
-# Then distribute evenly across developers.
+#
+# Then distribute evenly across developers (contiguous split by default)
+# and record the assignment under `shards:` below.
+#
+# Typical sizes once data is present: ~40 subjects per developer across 3 shards
+# (120 total; 83 of them have two equal-length runs — see io.two_run_subjects).
 #
 # Usage:
 #   python scripts/preprocess.py --subjects $(python -c "import yaml; print(' '.join(yaml.safe_load(open('configs/shards.yaml'))['shards']['dev_a']))")
 # Or read the list directly in your code from this file.
+#
+# Coordination: staged manifest/registry rows go under trajot/results/;
+# runtime data plane is <data_root>/derivatives/trajot/ (see TRACKING.md).
 
 shards:
-  dev_a: []   # populate with first ~40 subject IDs
+  dev_a: []   # populate with first ~40 subject IDs from `ls data/ds000243/ | grep '^sub-' | sort`
   dev_b: []   # populate with next ~40
   dev_c: []   # populate with remaining
 

@@ -1,19 +1,41 @@
+from __future__ import annotations
+
 from .ablated import AblatedModel
-from .base import BASELINE_REGISTRY, Baseline, BaselineResult, FakeBaseline, get_baseline
-from .brainsync import BrainSync
+from .base import (
+    BASELINE_REGISTRY,
+    Baseline,
+    BaselineResult,
+    FakeBaseline,
+    cfg_get,
+    get_baseline,
+    register_baseline,
+    upper_triangle_features,
+)
+from .brainsync import BrainSync, brainsync_Q, to_connectome_transform
 from .conn_srm import ConnSRM
 from .fugw import FUGW
+from .harness import align_features, run_baseline
 from .noalign import NoAlign
+from .ours import OursAblated, OursFull
 
 __all__ = [
     "Baseline",
     "BaselineResult",
     "BASELINE_REGISTRY",
+    "register_baseline",
     "get_baseline",
     "FakeBaseline",
     "NoAlign",
     "BrainSync",
+    "brainsync_Q",
+    "to_connectome_transform",
     "FUGW",
     "ConnSRM",
     "AblatedModel",
+    "OursFull",
+    "OursAblated",
+    "run_baseline",
+    "align_features",
+    "cfg_get",
+    "upper_triangle_features",
 ]

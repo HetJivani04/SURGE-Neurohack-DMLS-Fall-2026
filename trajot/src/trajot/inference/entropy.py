@@ -68,3 +68,56 @@ def entropy_estimator(log_q_xi: np.ndarray, logdet_terms: np.ndarray) -> float:
     """``H[q(pi)] = H[q(xi)] + E[log |det J_f(xi)|]`` from draws: ``H[q(xi)] = -mean(log q(xi))`` and
     ``logdet_terms`` the per-draw ``log |det J_f(xi)|``."""
     return float(-np.mean(log_q_xi) + np.mean(logdet_terms))
+
+
+def projected_sinkhorn_logdet(
+    score: np.ndarray,
+    mu: np.ndarray,
+    nu: np.ndarray,
+    eps: float,
+    n_iter: int = 30,
+    subspace_dim: int = 12,
+    ridge: float = 1e-3,
+    fd_step: float = 1e-3,
+    clip: float = 80.0,
+    generator: np.random.Generator | None = None,
+) -> float:
+    """Detached Hutchinson-style estimate of ``log |det J|`` for ``s |-> Sinkhorn_eps(s)``.
+
+    The Sinkhorn map ``R^{V×K} -> Pi(mu, nu)`` is rank-deficient on the ambient space (marginal constraints),
+    so a full SLQ logdet is ``-inf``. This estimator draws a random ``q``-dimensional subspace, forms
+    finite-difference Jacobian-vector products ``J Q`` via the NumPy Sinkhorn solver, and applies
+    :func:`slq_logdet` to the regularized Gram operator ``Q^T J^T J Q + ridge I`` on that subspace. The
+    subspace logdet is rescaled by ``dim/q`` as a crude full-space volume estimate and clipped to
+    ``[-clip, clip]`` for training stability.
+
+    Returns a finite float64. Computation is NumPy / CPU only; callers should treat the result as a detached
+    constant in any torch ELBO (pathwise differentiation through this estimator is not supported).
+    """
+    from trajot.inference.sinkhorn import sinkhorn_log
+
+    score = np.asarray(score, dtype=np.float64)
+    mu = np.asarray(mu, dtype=np.float64)
+    nu = np.asarray(nu, dtype=np.float64)
+    V, K = score.shape
+    dim = V * K
+    q = int(max(1, min(subspace_dim, dim)))
+    generator = generator or np.random.default_rng(0)
+
+    basis = generator.normal(size=(dim, q))
+    basis, _ = np.linalg.qr(basis)
+    columns = []
+    for j in range(q):
+        direction = basis[:, j].reshape(V, K)
+        plus, _ = sinkhorn_log(score + fd_step * direction, mu, nu, eps, n_iter=n_iter, tol=0.0)
+        minus, _ = sinkhorn_log(score - fd_step * direction, mu, nu, eps, n_iter=n_iter, tol=0.0)
+        columns.append(((plus - minus) / (2.0 * fd_step)).ravel())
+    jq = np.stack(columns, axis=1)
+    gram = jq.T @ jq + ridge * np.eye(q)
+
+    def matvec(v: np.ndarray) -> np.ndarray:
+        return gram @ v
+
+    logdet_gram = slq_logdet(matvec, q, n_probes=2, n_lanczos=min(q, 10), generator=generator)
+    logdet = 0.5 * (dim / q) * logdet_gram
+    return float(np.clip(logdet, -clip, clip))

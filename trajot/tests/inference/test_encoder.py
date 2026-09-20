@@ -128,6 +128,37 @@ def test_sample_torch_is_float64_differentiable_and_matches_the_numpy_operator()
     assert torch.isfinite(S_t.grad).all() and torch.isfinite(tau_t.grad).all() and tau_t.grad.abs().max() > 0
 
 
+def test_sample_torch_promotes_float32_scores_without_the_mps_combined_cast() -> None:
+    """CPU float32 stands in for the MPS promotion path: combined .to(cpu, float64) is unsafe on MPS."""
+    S, tau, mu, nu = posterior_inputs(V=12, K=6)
+    assert S.dtype == np.float32
+    S_t = torch.from_numpy(S).requires_grad_(True)
+    tau_t = torch.from_numpy(tau).requires_grad_(True)
+    mu_t, nu_t = torch.from_numpy(mu).to(torch.float64), torch.from_numpy(nu).to(torch.float64)
+    pi, xi = SinkhornPosterior().sample_torch(
+        S_t, tau_t, mu_t, nu_t, 0.1, M=2, L=20, generator=torch.Generator().manual_seed(3))
+    assert pi.dtype == torch.float64 and pi.device.type == "cpu" and torch.isfinite(pi).all()
+    pi.sum().backward()
+    assert S_t.grad is not None and tau_t.grad is not None
+    assert torch.isfinite(S_t.grad).all() and S_t.grad.abs().max() > 0
+
+
+@pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS not available")
+def test_sample_torch_works_when_scores_live_on_mps() -> None:
+    S, tau, mu, nu = posterior_inputs(V=10, K=5)
+    device = torch.device("mps")
+    S_t = torch.from_numpy(S).to(device).requires_grad_(True)
+    tau_t = torch.from_numpy(tau).to(device).requires_grad_(True)
+    mu_t = torch.from_numpy(mu).to(torch.float64)  # OT masses stay CPU float64
+    nu_t = torch.from_numpy(nu).to(torch.float64)
+    pi, xi = SinkhornPosterior().sample_torch(
+        S_t, tau_t, mu_t, nu_t, 0.1, M=2, L=15, generator=torch.Generator().manual_seed(0))
+    assert pi.dtype == torch.float64 and pi.device.type == "cpu" and torch.isfinite(pi).all()
+    pi.sum().backward()
+    assert S_t.grad is not None and torch.isfinite(S_t.grad.cpu()).all()
+
+
+
 def test_log_prob_of_the_perturbation_is_the_gaussian_density() -> None:
     S, tau, mu, nu = posterior_inputs(V=6, K=4)
     xi = np.random.default_rng(2).normal(size=(3, 6, 4))

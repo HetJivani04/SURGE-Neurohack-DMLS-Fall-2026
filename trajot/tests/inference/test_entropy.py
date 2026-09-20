@@ -3,7 +3,12 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from trajot.inference.entropy import entropy_estimator, hutchinson_logdet, slq_logdet
+from trajot.inference.entropy import (
+    entropy_estimator,
+    hutchinson_logdet,
+    projected_sinkhorn_logdet,
+    slq_logdet,
+)
 
 
 def spd(n: int, spread: float, seed: int = 0) -> np.ndarray:
@@ -75,3 +80,20 @@ def test_entropy_estimator_reproduces_the_analytic_gaussian_entropy_within_its_p
 
 def test_entropy_estimator_combines_the_two_terms() -> None:
     assert entropy_estimator(np.array([-1.0, -3.0]), np.array([0.5, 1.5])) == pytest.approx(2.0 + 1.0)
+
+
+def test_projected_sinkhorn_logdet_is_finite_and_clipped() -> None:
+    from trajot.inference.sinkhorn import sinkhorn_log
+
+    V, K = 8, 5
+    rng = np.random.default_rng(0)
+    score = rng.normal(size=(V, K))
+    mu, nu = np.full(V, 1.0 / V), np.full(K, 1.0 / K)
+    pi, _ = sinkhorn_log(score, mu, nu, 0.1, n_iter=20)
+    assert pi.shape == (V, K)
+    value = projected_sinkhorn_logdet(score, mu, nu, 0.1, n_iter=20, subspace_dim=4,
+                                      generator=np.random.default_rng(1))
+    assert np.isfinite(value) and -80.0 <= value <= 80.0
+    again = projected_sinkhorn_logdet(score, mu, nu, 0.1, n_iter=20, subspace_dim=4,
+                                      generator=np.random.default_rng(1))
+    assert again == pytest.approx(value)

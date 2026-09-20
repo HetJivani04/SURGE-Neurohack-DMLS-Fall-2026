@@ -5,18 +5,31 @@ subjects, ``M`` reparametrized posterior draws each, ``eps`` annealed geometrica
 ``sigma_hat_C^-2``. **Training uses run 1 only; run 2 is held out** (``TrainData.holdout``, never read here).
 
 Scale convention. Inside the loop the coupling has **unit row mass** (total mass ``V_s``): ``mu = V_s * mu_s`` and
-``nu = V_s * nu``. Then ``E_GW`` is the sum over the ``V_s^2`` entries of the connectome (which is what
-``sigma_hat_C^2 = 0.5 ||dC||_F^2 / V^2``, a per-entry variance, presupposes), and the feature and Gibbs terms are
-sums over vertices, commensurate with the entropy of the ``V_s K``-dimensional posterior. With probability
-masses (total 1) those terms are weighted *means*, smaller by ``V_s^2`` and ``V_s``, and the entropy dominates:
-``tau`` diverges and nothing is learned. Returned draws are divided by ``V_s``, so they lie in
-``Pi(mu_s, nu)`` with ``mu_s`` the probability vertex mass of :func:`trajot.geometry.cost.vertex_mass`.
+``nu = V_s * nu``. Then ``E_GW`` is the sum over the entries of the region-level connectome, which is what
+``sigma_hat_C^2 = 0.5 ||dC||_F^2 / R^2`` (a per-entry variance with ``R`` the connectome side / parcel count, not
+surface vertices) presupposes, and the feature and Gibbs terms are sums over vertices, commensurate with the entropy
+of the ``V_s K``-dimensional posterior. With probability masses (total 1) those terms are weighted *means*, smaller
+by ``V_s^2`` and ``V_s``, and an unscaled ambient entropy dominates: ``tau`` diverges and nothing is learned.
+Returned draws are divided by ``V_s``, so they lie in ``Pi(mu_s, nu)`` with ``mu_s`` the probability vertex mass of
+:func:`trajot.geometry.cost.vertex_mass`.
 
-First pass: **the entropy term is dropped** (the issue allows this and asks that the run log say so). ``H[q(xi)]``
-alone is unbounded in ``tau`` (the true ``H[q(pi)]`` saturates because the Sinkhorn map contracts noise as the
-coupling sharpens, which is the log-determinant term of :mod:`trajot.inference.entropy`), so keeping only
-``H[q(xi)]`` makes ``tau`` diverge. Without an entropy term ``tau`` is driven to its floor: the posterior
-understates uncertainty and ``tau_phi`` does not yet say how well the data determine an alignment.
+Entropy (wired). The ELBO entropy is no longer hardcoded zero. True ``H[q(pi)] = H[q(xi)] + E[log|det J_sinkhorn|]``
+is estimated as a **pathwise Shannon entropy of the coupling draws** (differentiable through the unrolled Sinkhorn
+map; bounded on the polytope) plus a **detached Hutchinson/SLQ log-determinant** of a projected Sinkhorn Jacobian
+(:func:`trajot.inference.entropy.projected_sinkhorn_logdet`, clipped). Analytic ``H[q(xi)] = 0.5 V K (1 + log 2π)``
+is logged for reference; it is not added at full ambient scale inside the unit-row-mass objective (that sum is what
+made ``tau`` diverge when the Sinkhorn log-det was omitted). Scale the bonus with ``model.entropy.weight`` (default
+1.0). Residual caveat: the Jacobian term is detached, so ``tau`` receives entropy gradients only through the
+pathwise Shannon term — not through ``log|det J|``.
+
+Gibbs anchor. ``M0`` prefers geodesic distances from ``geometry.anatomical_cost`` when surface faces are available
+(``template_geometry.npz`` or a geometry sidecar under the derivatives tree). Otherwise Euclidean
+``cdist(coords, node_coords) / scale`` is used. Which path ran is recorded as ``TrainData.anchor`` /
+``TrainResult.anchor`` (``"geodesic"`` | ``"euclidean"``) and written into ``template.npz``.
+
+Gauge features. ``gauge_velocity`` is a **spatial** gradient of the diffusion embedding used as a gauge-breaking
+channel (breaks GW isometry to finitely many optima) — not a time derivative and not a model of dynamics.
+The band prior (``model.band.weight``) is a band prior, never a model of dynamics; default weight is 0.0.
 """
 
 from __future__ import annotations
@@ -33,9 +46,10 @@ import torch
 from scipy import stats
 from scipy.spatial.distance import cdist
 
-from trajot.geometry.cost import vertex_mass
+from trajot.geometry.cost import anatomical_cost, vertex_mass
 from trajot.geometry.diffusion import gauge_velocity, laplacian_eigenvectors
 from trajot.inference.encoder import ScoreEncoder, SinkhornPosterior, build_inputs
+from trajot.inference.entropy import projected_sinkhorn_logdet
 from trajot.io.contract import load_connectomes, read_manifest, read_subject_run, subject_run_path
 from trajot.model.elbo import beta_schedule, elbo_terms, eps_schedule
 from trajot.model.prior import band_penalty_matrix, constrain_scale, log_prior_theta
@@ -97,9 +111,10 @@ class SubjectData:
     A: np.ndarray  # (V, r) float64: rank-r factor of the vertex-level correlation matrix, C_s = A A^T
     mu: np.ndarray  # (V,) float64: vertex mass, uniform
     Y: np.ndarray  # (V, F0) float64: [diffusion embedding, anatomical features]
-    v: np.ndarray | None  # (V, d) float64: gauge velocity (spatial gradient of the embedding), or None
+    v: np.ndarray | None  # (V, d) float64: spatial gradient of the embedding (gauge-breaking channel), or None
     M0: np.ndarray  # (V, K) float64: anatomical anchor to the template nodes
     u: np.ndarray  # (V, in_dim) float32: encoder input
+    anchor: str = "euclidean"  # "geodesic" when M0 came from anatomical_cost faces; else Euclidean cdist
 
 
 @dataclass
@@ -109,6 +124,7 @@ class TrainData:
     connectomes: np.ndarray  # (S, R, R) float64, run 1, for the template initialization
     beta_target: float
     node_coords: np.ndarray  # (K, 3): where the template nodes sit anatomically
+    anchor: str = "euclidean"  # how M0 was built: "geodesic" | "euclidean"
 
 
 def farthest_point_sampling(points: np.ndarray, k: int) -> np.ndarray:
@@ -123,11 +139,36 @@ def farthest_point_sampling(points: np.ndarray, k: int) -> np.ndarray:
     return np.array(chosen)
 
 
-def prepare_subject(npz: dict[str, Any], cfg: Any, node_coords: np.ndarray, distance_scale: float) -> SubjectData:
+def _load_faces_for(root: Path, n_vertices: int) -> np.ndarray | None:
+    """Surface faces from the derivatives tree if their indices are valid for ``n_vertices``."""
+    deriv = Path(root) / "derivatives" / "trajot"
+    candidates = [deriv / "template_geometry.npz", *sorted(deriv.glob("*_geometry.npz"))]
+    for path in candidates:
+        if not path.exists():
+            continue
+        try:
+            with np.load(path) as z:
+                if "faces" not in z.files:
+                    continue
+                faces = np.asarray(z["faces"])
+        except OSError:
+            continue
+        if faces.size and faces.ndim == 2 and faces.shape[1] == 3 and int(faces.max()) < n_vertices:
+            return faces.astype(np.int64)
+    return None
+
+
+def prepare_subject(
+    npz: dict[str, Any], cfg: Any, node_coords: np.ndarray, distance_scale: float, *,
+    node_dist: np.ndarray | None = None,
+) -> SubjectData:
     """Turn a contract file into :class:`SubjectData`.
 
     ``A_s`` is the rank-``r`` factor of the vertex-level correlation matrix, taken from the standardized time
     series (a thin SVD), so no ``(V, V)`` matrix is needed to define the geometry.
+
+    ``M0`` is geodesic when ``node_dist (V_all, K)`` is given (``anatomical_cost`` columns to the template nodes);
+    otherwise Euclidean ``cdist(coords, node_coords) / distance_scale``. The choice is recorded on the result.
     """
     r, m = int(cfg.get("model.r")), int(cfg.get("model.encoder.m_eigvecs"))
     timeseries = np.asarray(npz["timeseries"], dtype=np.float64)
@@ -146,11 +187,18 @@ def prepare_subject(npz: dict[str, Any], cfg: Any, node_coords: np.ndarray, dist
     tr = float(npz["tr"])
     gauge = bool(cfg.get("model.gauge_features", True))
     laplacian = laplacian_eigenvectors(X @ X.T, m)
+    if node_dist is not None:
+        M0 = np.asarray(node_dist, dtype=np.float64)[valid]
+        anchor = "geodesic"
+    else:
+        M0 = cdist(coords, node_coords) / distance_scale
+        anchor = "euclidean"
     return SubjectData(
         subject_id=str(npz["subject_id"]), tr=tr, valid=valid, A=A, mu=vertex_mass(X.shape[0]),
         Y=np.concatenate([embedding, features], axis=1), v=gauge_velocity(embedding, coords, tr) if gauge else None,
-        M0=cdist(coords, node_coords) / distance_scale,
-        u=build_inputs(np.asarray(npz["timeseries"])[valid], embedding, coords, laplacian, features=features))
+        M0=M0,
+        u=build_inputs(np.asarray(npz["timeseries"])[valid], embedding, coords, laplacian, features=features),
+        anchor=anchor)
 
 
 def load_train_data(
@@ -159,10 +207,13 @@ def load_train_data(
 ) -> TrainData:
     """Read the contract files under ``root``: run 1 of every subject for training, run 2 held out.
 
-    The ``K`` template nodes are placed at the vertices of the first subject that are farthest apart, and the
-    anatomical anchor ``M0`` is the distance from each vertex to each node, scaled to about ``[0, 1]``. If
-    ``beta_target`` is ``None`` it comes from ``cfg`` (``model.beta.synthetic``): calibrating ``beta`` from
-    real two-run data is :func:`trajot.inference.beta.calibrate_beta`'s job alone.
+    The ``K`` template nodes are placed at the vertices of the first subject that are farthest apart. When surface
+    faces are available under ``root/derivatives/trajot`` (``template_geometry.npz`` or a ``*_geometry.npz``
+    sidecar), the anatomical anchor ``M0`` is the geodesic distance from each vertex to each node
+    (:func:`trajot.geometry.cost.anatomical_cost`, already scaled to ``[0, 1]``) and ``anchor`` is
+    ``"geodesic"``. Otherwise ``M0`` is Euclidean ``cdist(coords, node_coords) / scale`` and ``anchor`` is
+    ``"euclidean"``. If ``beta_target`` is ``None`` it comes from ``cfg`` (``model.beta.synthetic``): calibrating
+    ``beta`` from real two-run data is :func:`trajot.inference.beta.calibrate_beta`'s job alone.
     """
     root = Path(root)
     manifest = read_manifest(root)
@@ -175,16 +226,30 @@ def load_train_data(
 
     K = int(cfg.get("model.K"))
     reference = read_subject_run(subject_run_path(root, ids[0], train_run))["coords"].astype(np.float64)
-    node_coords = reference[farthest_point_sampling(reference, K)]
-    scale = float(cdist(node_coords, node_coords).max()) or 1.0
+    node_indices = farthest_point_sampling(reference, K)
+    node_coords = reference[node_indices]
+    faces = _load_faces_for(root, reference.shape[0])
+    node_dist = None
+    if faces is not None:
+        full_cost = anatomical_cost(reference, faces)  # (V_all, V_all) in [0, 1]
+        node_dist = full_cost[:, node_indices]
+        scale = 1.0
+        anchor = "geodesic"
+    else:
+        scale = float(cdist(node_coords, node_coords).max()) or 1.0
+        anchor = "euclidean"
 
     def load(run: str) -> list[SubjectData]:
-        return [prepare_subject(read_subject_run(subject_run_path(root, s, run)), cfg, node_coords, scale) for s in ids]
+        return [
+            prepare_subject(read_subject_run(subject_run_path(root, s, run)), cfg, node_coords, scale,
+                            node_dist=node_dist)
+            for s in ids
+        ]
 
     connectomes, _ = load_connectomes(root, ids, run=train_run)
     beta = float(cfg.get("model.beta.synthetic")) if beta_target is None else float(beta_target)
     return TrainData(train=load(train_run), holdout=load(holdout_run), connectomes=connectomes,
-                     beta_target=beta, node_coords=node_coords)
+                     beta_target=beta, node_coords=node_coords, anchor=anchor)
 
 
 # --------------------------------------------------------------------------- training
@@ -197,6 +262,9 @@ class TrainResult:
     loss_trace: list[dict[str, float]] = field(default_factory=list)  # one entry per epoch
     subject_ids: list[str] = field(default_factory=list)
     beta_target: float = 0.0
+    anchor: str = "euclidean"  # how M0 was built: "geodesic" | "euclidean"
+    entropy_weight: float = 1.0
+    entropy_estimator: str = "shannon_pi+hutchinson_slq"
 
 
 def posterior_samples(
@@ -215,6 +283,34 @@ def posterior_samples(
     return pi / V, tau.cpu().numpy()
 
 
+def _entropy_log_q(
+    pi: torch.Tensor, S_phi: torch.Tensor, tau: torch.Tensor, xi: torch.Tensor, mu: torch.Tensor,
+    nu: torch.Tensor, eps: float, L: int, entropy_weight: float, generator: np.random.Generator,
+) -> tuple[torch.Tensor, float]:
+    """ELBO ``log_q`` such that ``-mean(log_q) = entropy_weight * H_est`` (float64, CPU graph).
+
+    ``H_est`` is a pathwise Shannon entropy of the coupling draws (differentiable through Sinkhorn; bounded on
+    the polytope) plus a detached Hutchinson/SLQ log-determinant of a projected Sinkhorn Jacobian, clipped.
+    Analytic ``H[q(xi)]`` is returned separately for the run log and is not added at full ambient scale.
+    """
+    V, K = int(xi.shape[-2]), int(xi.shape[-1])
+    H_xi = 0.5 * V * K * (1.0 + math.log(2.0 * math.pi))
+    H_shannon = -(pi * torch.log(pi.clamp_min(1e-300))).sum(dim=(-2, -1)).mean()
+    with torch.no_grad():
+        score = (
+            S_phi.cpu().to(dtype=torch.float64)
+            + tau.cpu().to(dtype=torch.float64)[:, None] * xi[0].cpu().to(dtype=torch.float64)
+        )
+        mu_np = np.asarray(mu.cpu().numpy() if isinstance(mu, torch.Tensor) else mu, dtype=np.float64)
+        nu_np = np.asarray(nu.cpu().numpy() if isinstance(nu, torch.Tensor) else nu, dtype=np.float64)
+        logdet = projected_sinkhorn_logdet(
+            score.numpy(), mu_np, nu_np, eps, n_iter=max(10, min(L, 20)), subspace_dim=4,
+            generator=generator)
+    logdet_t = torch.as_tensor(logdet, dtype=torch.float64, device=pi.device)
+    entropy = entropy_weight * (H_shannon + logdet_t)
+    return -entropy, float(H_xi)
+
+
 def train(cfg: Any, data: TrainData, device: Any) -> TrainResult:
     """Fit the model on ``data.train`` (run 1). ``device`` is where the float32 encoder runs; OT / GW arithmetic
     is float64 on CPU (``pick_device(prefer_mps=False)``). Prints one line per epoch (the run logger captures it)."""
@@ -231,9 +327,11 @@ def train(cfg: Any, data: TrainData, device: Any) -> TrainResult:
     epochs, lr = int(cfg.get("model.train.epochs")), float(cfg.get("model.train.lr"))
     max_row_norm = float(cfg.get("model.prior.B_max_row_norm"))
     band_weight = float(cfg.get("model.band.weight", 0.0))
+    entropy_weight = float(cfg.get("model.entropy.weight", 1.0))
     gauge = bool(cfg.get("model.gauge_features", True))
     subjects = data.train
     S = len(subjects)
+    entropy_rng = np.random.default_rng(seed + 17)
 
     F0 = subjects[0].Y.shape[1]
     F = F0 + (subjects[0].v.shape[1] if gauge else 0)
@@ -252,12 +350,15 @@ def train(cfg: Any, data: TrainData, device: Any) -> TrainResult:
     steps_per_epoch = math.ceil(S / batch_size)
     total_steps = epochs * steps_per_epoch
     print(f"train: {S} subjects (run 1), K={K}, r={r}, F={F}, M={M}, L={L}, {epochs} epochs x {steps_per_epoch} steps, "
-          f"beta target {data.beta_target:.4g}, gauge features {gauge}, band prior weight {band_weight}")
-    print("train: FIRST PASS - the entropy term H[q(pi)] is DROPPED: the posterior understates uncertainty and tau_phi "
-          "does not yet carry alignment uncertainty (see trajot.inference.entropy for the estimators)")
+          f"beta target {data.beta_target:.4g}, gauge features {gauge}, band prior weight {band_weight}, "
+          f"anchor {data.anchor}")
+    print(f"train: entropy WIRED (model.entropy.weight={entropy_weight:g}): pathwise Shannon(pi) + detached "
+          f"Hutchinson/SLQ logdet of a projected Sinkhorn Jacobian (estimator=shannon_pi+hutchinson_slq); "
+          f"analytic H[q(xi)] is logged for reference, not summed at full ambient scale")
 
     trace: list[dict[str, float]] = []
     step = 0
+    H_xi_ref = 0.0
     for epoch in range(1, epochs + 1):
         order = rng.permutation(S)
         sums: dict[str, float] = {}
@@ -282,8 +383,9 @@ def train(cfg: Any, data: TrainData, device: Any) -> TrainResult:
                         A, B64, sub.tr, tuple(cfg.get("model.band.seconds")), float(cfg.get("model.band.bandwidth")))
                 log_prior = log_prior_theta(
                     SimpleNamespace(B=B64, F_bar=F_bar.double(), eps=torch.exp(log_eps)), cfg)
+                log_q, H_xi_ref = _entropy_log_q(pi, S_phi, tau, xi, mu, nu_s, eps_t, L, entropy_weight, entropy_rng)
                 terms = elbo_terms(pi, A, B64, nu_s, mu, Y, F_bar.double(), M0, torch.exp(log_eps[s]), sigma_f2, beta_t,
-                                   torch.zeros(M, dtype=torch.float64), band_penalty=penalty, log_prior=log_prior)
+                                   log_q, band_penalty=penalty, log_prior=log_prior)
                 (-terms["total"] / len(batch)).backward()
                 with torch.no_grad():
                     for name, value in terms.items():
@@ -311,7 +413,8 @@ def train(cfg: Any, data: TrainData, device: Any) -> TrainResult:
         draws.append(pi)
         taus.append(tau)
     return TrainResult(params=params, encoder=encoder, tau_phi=taus, pi_samples=draws, loss_trace=trace,
-                       subject_ids=[s.subject_id for s in subjects], beta_target=data.beta_target)
+                       subject_ids=[s.subject_id for s in subjects], beta_target=data.beta_target,
+                       anchor=data.anchor, entropy_weight=entropy_weight)
 
 
 def save_artifacts(run_dir: Path, result: TrainResult) -> None:
@@ -321,5 +424,7 @@ def save_artifacts(run_dir: Path, result: TrainResult) -> None:
     np.savez_compressed(out / "posterior_samples.npz", **{f"sub-{sid}": pi for sid, pi in zip(result.subject_ids, result.pi_samples)})
     np.savez(out / "tau_phi.npz", **{f"sub-{sid}": tau for sid, tau in zip(result.subject_ids, result.tau_phi)})
     np.savez(out / "template.npz", B=result.params.B, F_bar=result.params.F_bar, nu=result.params.nu,
-             eps=result.params.eps, subject_ids=np.array(result.subject_ids))
+             eps=result.params.eps, subject_ids=np.array(result.subject_ids),
+             anchor=np.array(result.anchor), entropy_weight=np.float64(result.entropy_weight),
+             entropy_estimator=np.array(result.entropy_estimator))
     (out / "loss_trace.json").write_text(json.dumps(result.loss_trace, indent=2) + "\n")

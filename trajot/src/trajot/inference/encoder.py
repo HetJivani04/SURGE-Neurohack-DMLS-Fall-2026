@@ -125,12 +125,19 @@ class SinkhornPosterior:
 
     def sample_torch(self, S_phi: torch.Tensor, tau_phi: torch.Tensor, mu_s: torch.Tensor, nu: torch.Tensor, eps: float,
                      M: int = 4, L: int = 30, generator: torch.Generator | None = None) -> tuple[torch.Tensor, torch.Tensor]:
-        """Differentiable draws for training: ``(pi (M, V, K) float64, xi (M, V, K))``. ``S_phi`` and ``tau_phi``
-        (float32, possibly on another device) are promoted to float64 on the device of ``mu_s`` (CPU)."""
-        S = S_phi.to(device=mu_s.device, dtype=torch.float64)
-        tau = tau_phi.to(device=mu_s.device, dtype=torch.float64)
-        xi = torch.randn((M, *S.shape), generator=generator, dtype=torch.float64, device=mu_s.device)
-        pi = sinkhorn_log_torch(S.unsqueeze(0) + tau[None, :, None] * xi, mu_s, nu, eps, n_iter=L)
+        """Differentiable draws for training: ``(pi (M, V, K) float64, xi (M, V, K))``.
+
+        ``S_phi`` / ``tau_phi`` are float32 and may live on MPS, which has no float64. Combined
+        ``.to(device="cpu", dtype=float64)`` raises ``TypeError`` on this build, so promote with
+        ``.cpu().to(dtype=float64)``. ``.cpu()`` is differentiable and keeps the autograd graph.
+        OT arithmetic always runs as float64 on CPU; ``mu_s`` / ``nu`` are forced there the same way.
+        """
+        S = S_phi.cpu().to(dtype=torch.float64)
+        tau = tau_phi.cpu().to(dtype=torch.float64)
+        mu = mu_s.cpu().to(dtype=torch.float64) if mu_s.device.type != "cpu" else mu_s.to(dtype=torch.float64)
+        nu_c = nu.cpu().to(dtype=torch.float64) if nu.device.type != "cpu" else nu.to(dtype=torch.float64)
+        xi = torch.randn((M, *S.shape), generator=generator, dtype=torch.float64, device="cpu")
+        pi = sinkhorn_log_torch(S.unsqueeze(0) + tau[None, :, None] * xi, mu, nu_c, eps, n_iter=L)
         return pi, xi
 
     def log_prob(self, tau_phi, xi):

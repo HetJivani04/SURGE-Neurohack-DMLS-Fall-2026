@@ -65,6 +65,16 @@ def test_gauge_velocity_and_features_have_expected_shapes_and_scaling() -> None:
     assert np.allclose(f[:, d:], beta * v)
 
 
+def test_gauge_docstrings_describe_a_spatial_gauge_breaking_channel_not_temporal_dynamics() -> None:
+    from trajot.geometry import diffusion
+
+    for fn in (diffusion.gauge_velocity, diffusion.gauge_features):
+        text = (fn.__doc__ or "").lower()
+        assert "temporal velocity" not in text and "kinematic" not in text and "captures dynamics" not in text
+    assert "spatial" in (diffusion.gauge_velocity.__doc__ or "").lower()
+    assert "gauge-breaking" in (diffusion.gauge_velocity.__doc__ or "").lower()
+
+
 def _clustered_correlation(n: int, seed: int = 0) -> np.ndarray:
     rng = np.random.default_rng(seed)
     latent = rng.standard_normal((8, 90))

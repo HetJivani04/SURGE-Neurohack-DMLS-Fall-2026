@@ -2,27 +2,34 @@
 """Single entry point for every experiment.
 
     python scripts/run_experiment.py --config configs/experiments/10_ours_full.yaml
+    python scripts/run_experiment.py --config configs/experiments/00_noalign.yaml --synthetic
 
 Every run writes ``runs/<run_id>/{manifest.json, metrics.json, log.txt, artifacts/}`` and one
 row of ``runs/index.csv``.
 
-``metrics.json`` schema (published here by W0; W2, W3, and W4 write and read it). Required keys::
+``metrics.json`` schema (published by W0; W3/W4 write and read it). Required keys::
 
     experiment, run_id, n_subjects, n_pairs, pairs_seed, permutations_B,
-    methods: {<name>: {ident_accuracy: float, ident_ci: [float, float], perm_p: float,
-                       alignment_gain: float, nonidentifiable_pairs: int,
-                       per_pair_uncertainty: float | null, per_pair_flags: list[bool] | null}},
+    methods: {<name>: {ident_accuracy, ident_ci, perm_p, null_max,
+                       alignment_gain, nonidentifiable_pairs,
+                       per_pair_uncertainty, per_pair_flags}},
     beta: float | null, notes: str
 
 ``null`` is how a baseline reports a column it cannot fill: never ``0`` and never an omitted
 key, because W4's table must show those cells as deliberately empty.
+
+When ``scripts/evaluate.py`` is available (normal repo layout), each experiment dispatches to
+real fit+eval via ``evaluate_method``. When only this file is copied (entrypoint smoke tests),
+runners fall back to an empty-but-schema-valid stub payload.
 """
 
 from __future__ import annotations
 
 import argparse
 import getpass
+import importlib.util
 import json
+import os
 import sys
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -36,15 +43,71 @@ import yaml
 from trajot.config import Config, load_config
 from trajot.runlog.parallel import setup_threads
 
-RUNS_DIR = Path(__file__).resolve().parents[1] / "runs"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+RUNS_DIR = Path(os.environ.get("TRAJOT_RUNS_DIR") or (PROJECT_ROOT / "runs"))
 
 EXPERIMENT_NAMES = (
     "00_noalign", "01_brainsync", "02_fugw", "03_conn_srm", "10_ours_full", "11_ours_ablated",
 )
 
+EXPERIMENT_METHOD = {
+    "00_noalign": "noalign",
+    "01_brainsync": "brainsync",
+    "02_fugw": "fugw",
+    "03_conn_srm": "conn_srm",
+    "10_ours_full": "ours_full",
+    "11_ours_ablated": "ours_ablated",
+}
+
+
+def _evaluate_script_candidates() -> list[Path]:
+    here = Path(__file__).resolve().parent
+    candidates = [here / "evaluate.py"]
+    env = os.environ.get("TRAJOT_EVALUATE_PY")
+    if env:
+        candidates.append(Path(env))
+    return candidates
+
+
+def _load_evaluate_module():
+    """Load scripts/evaluate.py when present; None when only this file was copied."""
+    for path in _evaluate_script_candidates():
+        if not path.is_file():
+            continue
+        spec = importlib.util.spec_from_file_location("trajot_scripts_evaluate", path)
+        if spec is None or spec.loader is None:
+            continue
+        module = importlib.util.module_from_spec(spec)
+        try:
+            spec.loader.exec_module(module)
+        except Exception:
+            continue
+        return module
+    return None
+
+
+def _resolve_synthetic(cfg: Config, explicit: bool = False) -> bool:
+    if explicit or cfg.get("run.synthetic"):
+        return True
+    manifest = Path(cfg.data_root) / "derivatives" / "trajot" / "manifest.parquet"
+    return not manifest.exists()
+
+
+def _beta_from_config_or_artifacts(cfg: Config, run_dir: Path) -> float | None:
+    artifacts = run_dir / "artifacts" / "beta.json"
+    if artifacts.is_file():
+        try:
+            data = json.loads(artifacts.read_text())
+            if "beta" in data:
+                return float(data["beta"])
+        except Exception:
+            pass
+    val = cfg.get("model.beta.synthetic")
+    return None if val is None else float(val)
+
 
 def _stub_runner(cfg: Config, run_dir: Path) -> dict[str, Any]:
-    """W0 stub: an empty-but-schema-valid metrics payload."""
+    """Empty-but-schema-valid metrics payload when evaluate glue is unavailable."""
     return {
         "experiment": cfg.experiment,
         "run_id": run_dir.name,
@@ -58,9 +121,79 @@ def _stub_runner(cfg: Config, run_dir: Path) -> dict[str, Any]:
     }
 
 
-# W1-W4 replace entries as they land; the signature never changes.
+def _run_experiment_method(
+    experiment: str,
+    cfg: Config,
+    run_dir: Path,
+    *,
+    synthetic: bool | None = None,
+) -> dict[str, Any]:
+    """Load data, fit/transform the experiment method, evaluate with D7 metrics."""
+    ev = _load_evaluate_module()
+    if ev is None or not hasattr(ev, "evaluate_method"):
+        return _stub_runner(cfg, run_dir)
+
+    method_name = EXPERIMENT_METHOD[experiment]
+    synth = _resolve_synthetic(cfg) if synthetic is None else synthetic
+    run1, run2, subjects, timeseries = ev._load_data(cfg, synthetic=synth)
+
+    ours_artifacts = None
+    raw = cfg.get("run.ours_artifacts")
+    if raw:
+        ours_artifacts = Path(str(raw))
+    elif method_name.startswith("ours") and (run_dir / "artifacts").is_dir():
+        ours_artifacts = run_dir / "artifacts"
+
+    stats = ev.evaluate_method(
+        method_name,
+        None,
+        run1,
+        run2,
+        cfg,
+        subjects,
+        timeseries=timeseries,
+        ours_artifacts=ours_artifacts,
+        data_root=cfg.data_root,
+    )
+    stats = ev._strip_meta(stats)
+
+    notes_parts = []
+    if synth:
+        notes_parts.append("synthetic")
+    if stats.get("null_max") is None:
+        notes_parts.append("null_max unfilled")
+    if stats.get("per_pair_uncertainty") is None:
+        notes_parts.append("per_pair_uncertainty unfilled")
+    meta = stats.get("_meta") or {}
+    if meta.get("fit_error"):
+        notes_parts.append(str(meta["fit_error"]))
+
+    payload = {
+        "experiment": experiment,
+        "run_id": run_dir.name,
+        "n_subjects": int(len(subjects)),
+        "n_pairs": int(cfg.get("eval.pairs.n")),
+        "pairs_seed": int(cfg.get("eval.pairs.seed")),
+        "permutations_B": int(cfg.get("eval.permutations.B")),
+        "methods": {method_name: stats},
+        "beta": _beta_from_config_or_artifacts(cfg, run_dir),
+        "notes": "; ".join(notes_parts),
+    }
+    return payload
+
+
+def _make_runner(experiment: str) -> Callable[[Config, Path], dict[str, Any]]:
+    def _runner(cfg: Config, run_dir: Path) -> dict[str, Any]:
+        return _run_experiment_method(experiment, cfg, run_dir)
+
+    _runner.__name__ = f"run_{experiment}"
+    _runner.__doc__ = f"Real fit+eval runner for {experiment} (stub if evaluate.py missing)."
+    return _runner
+
+
+# Each experiment maps to real fit+eval when evaluate.py is importable; else stub.
 EXPERIMENT_RUNNERS: dict[str, Callable[[Config, Path], dict[str, Any]]] = {
-    name: _stub_runner for name in EXPERIMENT_NAMES
+    name: _make_runner(name) for name in EXPERIMENT_NAMES
 }
 
 
@@ -77,14 +210,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--override", action="append", default=[], type=_override, metavar="KEY=VALUE")
     parser.add_argument("--seed", type=int, help="sets run.seed")
     parser.add_argument("--n-jobs", type=int, help="sets run.n_jobs")
-    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--synthetic", action="store_true", help="force synthetic data path")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="still runs dispatch and writes the run record (W0 acceptance path)")
     parser.add_argument("--debug", action="store_true", help="sets run.debug")
     return parser
 
 
 def dispatch(cfg: Config, run_dir: Path) -> dict[str, Any]:
     """Look up ``EXPERIMENT_RUNNERS[cfg.experiment]`` and run it."""
-    return EXPERIMENT_RUNNERS[cfg.experiment](cfg, run_dir)
+    runner = EXPERIMENT_RUNNERS.get(cfg.experiment, _stub_runner)
+    return runner(cfg, run_dir)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -96,6 +232,8 @@ def main(argv: list[str] | None = None) -> int:
         overrides["run.n_jobs"] = args.n_jobs
     if args.debug:
         overrides["run.debug"] = True
+    if args.synthetic:
+        overrides["run.synthetic"] = True
 
     cfg = load_config(args.config, overrides)
     n_jobs = cfg.n_jobs
@@ -112,7 +250,8 @@ def main(argv: list[str] | None = None) -> int:
     (run_dir / "artifacts").mkdir(parents=True, exist_ok=True)
 
     seed, operator = cfg.get("run.seed"), getpass.getuser()
-    data_hash = hash_data_root(cfg.data_root / "derivatives" / "trajot")
+    derivatives = cfg.data_root / "derivatives" / "trajot"
+    data_hash = hash_data_root(derivatives)
     manifest = dict(seed=seed, operator=operator, n_jobs=n_jobs, threads=threads,
                     data_hash=data_hash, start_utc=start_utc)
     write_manifest(run_dir, cfg, **manifest, end_utc=None)
@@ -121,6 +260,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         logger.log(f"config hash {cfg.hash[:8]}, seed {seed}, n_jobs {n_jobs}")
         metrics = dispatch(cfg, run_dir)
+        # W0 contract: write the payload as-is so callers can inject schema variants.
         (run_dir / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n")
         logger.log("finished")
     finally:
@@ -128,12 +268,23 @@ def main(argv: list[str] | None = None) -> int:
 
     end_utc = datetime.now(timezone.utc)
     write_manifest(run_dir, cfg, **manifest, end_utc=end_utc)
-    append_run(RUNS_DIR / "index.csv", {
+
+    primary = None
+    methods = metrics.get("methods") or {}
+    if methods:
+        primary = next(iter(methods.values()))
+    row = {
         "run_id": run_id, "experiment": cfg.experiment, "config_hash": cfg.hash,
         "git_commit": git_commit(), "data_hash": data_hash, "seed": seed, "operator": operator,
         "n_jobs": n_jobs, "start_utc": start_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "end_utc": end_utc.strftime("%Y-%m-%dT%H:%M:%SZ"), "status": "ok",
-    })
+    }
+    if isinstance(primary, dict):
+        row["ident_accuracy"] = primary.get("ident_accuracy")
+        row["perm_p"] = primary.get("perm_p")
+        row["alignment_gain"] = primary.get("alignment_gain")
+        row["nonidentifiable_pairs"] = primary.get("nonidentifiable_pairs")
+    append_run(RUNS_DIR / "index.csv", row)
     return 0
 
 

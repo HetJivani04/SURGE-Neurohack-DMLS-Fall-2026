@@ -1,4 +1,4 @@
-# Ablation: the velocity-augmented gauge-fixing feature term is removed.
+# Ablation: the spatial gradient gauge-fixing feature channel is removed.
 # Identical to model/default.yaml except for `gauge_features`.
 K: 512
 d: 32
@@ -12,6 +12,8 @@ beta:
   warmup_frac: 0.3
   synthetic: 50.0   # fixed beta for synthetic fits: beta is never calibrated on synthetic data
 sigma_f2: 1.0       # feature noise variance
+entropy:
+  weight: 1.0       # scales the ELBO entropy bonus H[q(pi)] (pathwise Shannon + Hutchinson logdet)
 prior:
   sigma_B: 1.0
   sigma_F: 1.0
@@ -28,7 +30,7 @@ encoder:
 band:
   seconds: [10.0, 100.0]   # band prior edges in seconds
   bandwidth: 0.05
-  weight: 0.0       # 0 leaves the band prior out of the ELBO
+  weight: 0.0       # band prior, not a model of dynamics; 0 leaves it out of the ELBO
 train:
   epochs: 100
   lr: 0.001

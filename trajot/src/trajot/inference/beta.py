@@ -3,9 +3,16 @@
 ``E_GW`` has no tractable normalizer in ``pi``, so the model is a Gibbs (generalized) posterior in the
 Bissiri-Holmes-Walker sense, defensible only if ``beta`` is fixed from data rather than tuned::
 
-    sigma_hat_C^2 = 0.5 * mean_s || C_s^(1) - C_s^(2) ||_F^2 / V^2 ,        beta = sigma_hat_C^-2
+    sigma_hat_C^2 = 0.5 * mean_s || C_s^(1) - C_s^(2) ||_F^2 / R^2 ,        beta = sigma_hat_C^-2
 
 with the mean over the **83 two-run subjects** only. :func:`calibrate_beta` is the only place ``beta`` is computed.
+
+**Normalizer (locked).** ``R = C.shape[-1]`` is the connectome node count: the side of the region-level
+connectivity matrix ``C_s (R, R)`` (parcels in the connectivity), **not** the surface vertex count
+``n_vertices``. The symbol ``V`` that appears in some issue prose for this formula denotes ``R``. ``beta`` is
+therefore the inverse **per-entry** scan-rescan variance, which is what the unit-row-mass ``E_GW`` scale in
+:mod:`trajot.inference.train` presupposes. Issue text saying ``V = n_vertices`` is wrong relative to this
+observation model. :func:`calibrate_beta` writes ``n_regions`` (= ``R``) into ``beta.json``.
 """
 
 from __future__ import annotations
@@ -27,11 +34,11 @@ def _per_subject_terms(C1: np.ndarray, C2: np.ndarray) -> np.ndarray:
 
 
 def sigma_c_squared(C1: np.ndarray, C2: np.ndarray) -> float:
-    """``0.5 * mean_s ||C1[s] - C2[s]||_F^2 / V^2`` for two-run connectomes ``C1, C2`` ``(n, R, R)`` float64.
+    """``0.5 * mean_s ||C1[s] - C2[s]||_F^2 / R^2`` for two-run connectomes ``C1, C2`` ``(n, R, R)`` float64.
 
-    ``V`` is the side of the connectome matrices (the number of nodes the connectome is indexed by), so the
-    result is the per-entry variance of a subject's connectome between two scans: half the mean squared
-    difference of a scan-rescan pair.
+    ``R = C.shape[-1]`` is the connectome node count (parcels), not the surface vertex count. The result is
+    the per-entry variance of a subject's connectome between two scans: half the mean squared difference of a
+    scan-rescan pair, normalised by ``R^2`` so it matches the unit-row-mass ``E_GW`` convention.
     """
     return float(_per_subject_terms(C1, C2).mean())
 
@@ -42,8 +49,9 @@ def calibrate_beta(root: Path, subjects: Sequence[str] | None = None, out_dir: P
     With ``subjects=None`` the subjects come from :func:`trajot.io.contract.two_run_subjects` and the count is
     asserted to be 83 (it raises otherwise); an explicit ``subjects`` list (each must have two runs) is for
     tests of the estimator. Loads both runs' connectomes, writes ``<out_dir>/beta.json`` (``out_dir`` defaults
-    to ``artifacts/``) with ``sigma_hat_C_squared``, ``beta``, ``n_subjects``, ``subject_ids`` and
-    ``per_subject_terms``, and returns that dict.
+    to ``artifacts/``) with ``sigma_hat_C_squared``, ``beta``, ``n_regions`` (``R = C.shape[-1]``, connectome
+    nodes / parcels — not surface vertices), ``n_subjects``, ``subject_ids`` and ``per_subject_terms``, and
+    returns that dict.
     """
     manifest = read_manifest(Path(root))
     if subjects is None:
@@ -62,8 +70,8 @@ def calibrate_beta(root: Path, subjects: Sequence[str] | None = None, out_dir: P
 
     terms = _per_subject_terms(C1, C2)
     sigma2 = float(terms.mean())
-    result = {"sigma_hat_C_squared": sigma2, "beta": 1.0 / sigma2, "n_subjects": len(ids1),
-              "subject_ids": list(ids1), "per_subject_terms": [float(t) for t in terms]}
+    result = {"sigma_hat_C_squared": sigma2, "beta": 1.0 / sigma2, "n_regions": int(C1.shape[-1]),
+              "n_subjects": len(ids1), "subject_ids": list(ids1), "per_subject_terms": [float(t) for t in terms]}
 
     out_dir = Path(out_dir) if out_dir is not None else Path("artifacts")
     out_dir.mkdir(parents=True, exist_ok=True)

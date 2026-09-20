@@ -78,10 +78,21 @@ def test_calibrate_beta_reproduces_the_analytic_value_and_writes_beta_json(tmp_p
     sigma2 = 2 * delta**2 * (1 - 1 / R)
     assert result["sigma_hat_C_squared"] == pytest.approx(sigma2, rel=1e-12)
     assert result["beta"] == pytest.approx(1 / sigma2, rel=1e-12)
+    assert result["n_regions"] == R  # D2: normalizer side is the connectome node count, not n_vertices
     assert result["n_subjects"] == 6 and result["subject_ids"] == ids
     assert np.allclose(result["per_subject_terms"], sigma2) and len(result["per_subject_terms"]) == 6
     on_disk = json.loads((tmp_path / "artifacts" / "beta.json").read_text())
-    assert on_disk == result and set(on_disk) == {"sigma_hat_C_squared", "beta", "n_subjects", "subject_ids", "per_subject_terms"}
+    assert on_disk == result
+    assert set(on_disk) == {"sigma_hat_C_squared", "beta", "n_regions", "n_subjects", "subject_ids", "per_subject_terms"}
+
+
+def test_beta_docstring_says_v_denotes_connectome_nodes_not_surface_vertices() -> None:
+    from trajot.inference import beta as beta_mod
+
+    text = beta_mod.__doc__ + beta_mod.sigma_c_squared.__doc__ + beta_mod.calibrate_beta.__doc__
+    assert "connectome" in text.lower()
+    assert "not" in text.lower() and "surface" in text.lower()
+    assert "n_regions" in beta_mod.calibrate_beta.__doc__
 
 
 def test_calibrate_beta_asserts_the_real_dataset_has_83_two_run_subjects(tmp_path: Path) -> None:

@@ -4,7 +4,7 @@ from typing import Any, Mapping
 
 import numpy as np
 
-from .base import Baseline, register_baseline
+from .base import Baseline, register_baseline, symmetrize_zero_diag
 
 
 class NoAlign(Baseline):
@@ -13,14 +13,22 @@ class NoAlign(Baseline):
     def __init__(self) -> None:
         self._n_regions: int | None = None
         self.device = "cpu"
+        self.meta: dict[str, Any] = {"algorithm": "noalign_identity", "device": "cpu"}
 
-    def fit(self, connectomes: np.ndarray, cfg: Mapping[str, Any]) -> "NoAlign":
+    def fit(
+        self,
+        connectomes: np.ndarray,
+        cfg: Mapping[str, Any],
+        *,
+        extra: dict[str, Any] | None = None,
+    ) -> "NoAlign":
         mats = np.asarray(connectomes, dtype=np.float64)
         if mats.ndim != 3:
             raise ValueError(f"connectomes must be (S,R,R), found {mats.shape}")
         if mats.shape[1] != mats.shape[2]:
             raise ValueError(f"connectomes must be square per subject, found {mats.shape}")
         self._n_regions = int(mats.shape[1])
+        self.meta.update(n_regions=self._n_regions)
         return self
 
     def transform(self, connectome: np.ndarray) -> np.ndarray:
@@ -32,6 +40,10 @@ class NoAlign(Baseline):
                 f"connectome must be ({self._n_regions},{self._n_regions}), found {C.shape}"
             )
         return C.copy()
+
+    def transform_all(self, connectomes: np.ndarray, **_: Any) -> np.ndarray:
+        mats = np.asarray(connectomes, dtype=np.float64)
+        return mats.astype(np.float64, copy=True)
 
 
 register_baseline("noalign", NoAlign)

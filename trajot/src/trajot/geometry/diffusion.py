@@ -111,10 +111,12 @@ def laplacian_eigenvectors(C: np.ndarray, m: int = 8) -> np.ndarray:
 
 
 def gauge_velocity(z: np.ndarray, coords: np.ndarray, dt: float) -> np.ndarray:
-    """Compute a spatial finite-difference velocity over lexicographically ordered vertices.
+    """Spatial finite-difference of the diffusion embedding along lex-sorted coords, divided by ``dt`` (TR).
 
-    This is a spatial gradient of the diffusion embedding, not a temporal
-    derivative of neural activity.
+    This is a **spatial** gradient of the diffusion embedding used as a gauge-breaking channel. It is not a
+    time derivative of neural activity and not a model of dynamics. The Gromov-Wasserstein term is
+    isometry-invariant; a feature channel linear in the coupling breaks that isometry down to finitely many
+    optima. ``dt`` only sets the numerical scale (TR from the contract); the quantity is not motion over time.
     """
 
     emb = np.asarray(z, dtype=np.float64)
@@ -151,9 +153,10 @@ def gauge_velocity(z: np.ndarray, coords: np.ndarray, dt: float) -> np.ndarray:
 def gauge_features(z: np.ndarray, v: np.ndarray, beta: float) -> np.ndarray:
     """Return the gauge features ``f_i = [z_i ; beta * v_i]`` as ``(V, 2d)`` float64.
 
-    ``beta`` is the calibrated inverse temperature ``sigma_C^-2`` from scan-rescan reliability
-    (W2), not a free parameter, so the weight of the velocity channel is set by how reliable
-    an individual's own connectome is between two scans.
+    ``v`` is the spatial gradient of the diffusion embedding (a gauge-breaking channel), not a time-series
+    feature. ``beta`` is the calibrated inverse temperature ``sigma_C^-2`` from scan-rescan reliability
+    (W2), not a free parameter, so the weight of that channel is set by how reliable an individual's own
+    connectome is between two scans.
 
     Why the features are needed: the Gromov-Wasserstein term is quadratic in the coupling and
     invariant to isometries (Memoli 2011), so a coupling is defined only up to a symmetry
