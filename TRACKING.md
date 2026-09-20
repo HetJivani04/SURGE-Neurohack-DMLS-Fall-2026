@@ -7,12 +7,13 @@
 ---
 
 | 2026-09-20 | Phase2 lead | Frozen pilot n=24 | in progress | Cohort 015–038, frozen beta 29.189, B=200 debug. Ours transform = region-level OT coupling to C_pop then orthogonal Procrustes (not identity; tests assert non-identity). BrainSync wired with region-level timeseries lists + common-T crop. Ablated gauge-off train produces tau_phi. |
+| 2026-09-20 | Phase2 lead | N=83 REAL scale-up | baselines done; ours incomplete | Manifest 195/112/**83 two-run**; freeze_n83 + β83=**28.438** (vs β49=29.189); data_hash `4e6703055921b762…`. N=83 baselines complete. **ours_full_posterior_shrink INCOMPLETE** — artifacts `73533e35` cover **49/83** → transform falls back to `region_emd_procrustes` (not hierarchical). Full-N=83 `task_sota_reliability` **NOT claimed**. Subset (freeze∩artifacts, N=49, β83) reliability CIs exclude 0 vs noalign/BrainSync/FUGW. Group REML max available: **n_eff=28.50 < S=49**. PID 5103 not killed. N=49 remains PRIMARY. |
 
 ## Current phase
 
-**Phase 2 — REAL SOTA statistical closer complete. Official write-up: `trajot/reports/RESULTS.md`. Stats: `trajot/results/tables/REAL_sota_stats.json`.**
+**Phase 2 — REAL SOTA statistical closer complete (N=49 PRIMARY). Official write-up: `trajot/reports/RESULTS.md`. Stats: `trajot/results/tables/REAL_sota_stats.json`. N=83 scale-up: `trajot/results/tables/REAL_n83_gap_sota_summary.md`.**
 
-### Phase 2 closer verdict (2026-09-20)
+### Phase 2 closer verdict (2026-09-20) — N=49 PRIMARY
 
 - **Task SOTA claim: `task_sota_reliability`.** `ours_full_posterior_shrink` scan-rescan reliability 0.685 vs noalign 0.642 / BrainSync 0.643 / FUGW 0.620. Paired bootstrap B=10k reliability CIs exclude 0 vs **all three** (Δ +0.043 / +0.043 / +0.065).
 - **Identification:** 0.980 vs 0.959/0.959/0.918 — point estimate higher, bootstrap CI touches 0 → **trend only** (McNemar p=1.0 vs noalign). Do not claim ID superiority.
@@ -20,6 +21,16 @@
 - **Synthetic alignment SOTA sidecar:** coupling_recovery **0.70** vs point/EMD 0.03 / FUGW 0.028 (identity is Bayes-optimal for reconstruction noise; assignment recovery is the fair metric). Coverage@0.9 FAIL — not headlined.
 - **Invalid competitor:** conn_srm gain +0.395 with ident 0.082 = identity collapse.
 - Same-Q protocol verified: run-2 transforms reuse run-1 maps (`max_abs_diff=0`).
+
+### N=83 scale-up verdict (2026-09-20) — HONEST INCOMPLETE
+
+- Cohort freeze: **83** strict two-run; β=**28.438**; data_hash `4e6703055921b762…`; pairs 500 seed 2026; B=200.
+- **Baselines N=83:** noalign rel 0.6455 / ident 0.9157; BrainSync 0.6461 / 0.9036; FUGW 0.6215 / 0.9036; conn_srm **invalid** (ident 0.024, gain +0.386 collapse).
+- **Ours N=83:** transform = **`region_emd_procrustes` fallback** (artifacts pi_means **49/83**). rel 0.6483 / ident 0.8434 — **not** posterior_shrink. `posterior_drives_transform=false`.
+- **Bootstrap N=83 fallback:** reliability Δ CIs exclude 0 vs all three (+0.0028/+0.0022/+0.0268) but **must not be cited** as hierarchical SOTA. Ident **worse** than baselines.
+- **Bootstrap subset (freeze∩artifacts, N=49, β83):** posterior_shrink active; rel 0.685 vs 0.642/0.643/0.620; CIs exclude 0 → claim holds **only** on artifact-covered subjects.
+- **Group REML max available:** S=49, **n_eff=28.50 < 49**, ci_ratio=1.234 PASS; τ_φ=0.0092.
+- **Claim status:** full-N=83 `task_sota_reliability` **NOT established**. **N=49 remains PRIMARY.** To complete N=83: train ours_full on all 83 (K=100, β=28.438), then re-run gap+verify on freeze_n83. PID 5103 left running.
 
 ---
 
