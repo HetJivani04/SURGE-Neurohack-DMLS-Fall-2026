@@ -29,6 +29,7 @@ from .identification import (
 )
 from .metrics import (
     METHOD_KEYS,
+    OPTIONAL_UNCERTAINTY_KEYS,
     TOP_KEYS,
     method_metrics_template,
     validate_metrics_payload,
@@ -40,6 +41,14 @@ from .permutation import (
     permutation_null,
     permutation_p,
     sign_flip_permutation,
+)
+from .uncertainty import (
+    UNCERTAINTY_KEYS,
+    heldout_predictive_score,
+    nonident_auroc,
+    posterior_coverage,
+    shrinkage_transform,
+    subject_mean_tau,
 )
 
 __all__ = [
@@ -73,4 +82,11 @@ __all__ = [
     "ControlResult",
     "TOP_KEYS",
     "METHOD_KEYS",
+    "OPTIONAL_UNCERTAINTY_KEYS",
+    "UNCERTAINTY_KEYS",
+    "shrinkage_transform",
+    "posterior_coverage",
+    "nonident_auroc",
+    "heldout_predictive_score",
+    "subject_mean_tau",
 ]

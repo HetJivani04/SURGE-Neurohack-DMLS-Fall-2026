@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .uncertainty import UNCERTAINTY_KEYS
+
 
 TOP_KEYS = {
     "experiment",
@@ -36,7 +38,12 @@ DIAGNOSTIC_METHOD_KEYS = {
     "transform_diagnostics",
     "status",
 }
-ALLOWED_METHOD_KEYS = METHOD_KEYS | DIAGNOSTIC_METHOD_KEYS
+
+# Posterior diagnostics from trajot.eval.uncertainty. Not part of METHOD_KEYS:
+# baselines stay valid when these columns are absent. Present-or-null is fine.
+OPTIONAL_UNCERTAINTY_KEYS = set(UNCERTAINTY_KEYS)
+
+ALLOWED_METHOD_KEYS = METHOD_KEYS | DIAGNOSTIC_METHOD_KEYS | OPTIONAL_UNCERTAINTY_KEYS
 
 # Columns baselines often cannot fill; Agent D serializes these as JSON null.
 OPTIONAL_METHOD_KEYS = {
@@ -89,6 +96,8 @@ def validate_metrics_payload(payload: dict[str, Any]) -> None:
                 raise ValueError(f"method {method!r} alignment_gain must be float or None")
             if key == "per_pair_uncertainty" and not isinstance(value, (int, float)):
                 raise ValueError(f"method {method!r} per_pair_uncertainty must be float or None")
+            if key in OPTIONAL_UNCERTAINTY_KEYS and not isinstance(value, (int, float)):
+                raise ValueError(f"method {method!r} {key} must be float or None")
 
 
 def write_metrics(path: Path, payload: dict[str, Any]) -> Path:
