@@ -1,54 +1,155 @@
-[
-  {
-    "run_id": "00_noalign__eebd2f8e__20260920T093535Z",
-    "method": "noalign",
+{
+  "freeze": {
+    "frozen_root": "/Users/anandlo/Surge2026F/trajot_frozen_N49",
+    "cohort": "015-063",
     "n_subjects": 49,
-    "ident_accuracy": 0.9591836734693877,
-    "alignment_gain": 0.0,
-    "nonidentifiable_pairs": 500,
-    "perm_p": 0.004975124378109453,
-    "data_hash": "bab58d068885a900",
-    "notes": "per_pair_uncertainty unfilled",
-    "K": 100,
-    "epochs": 100
+    "n_rows": 98,
+    "data_hash_paths": "6a781cf0e9e0a64d",
+    "data_hash_content": "7d80027bcb9642edbbf64a91edef465c30275431c52682d0e651677251a156d3",
+    "run_manifest_data_hash_prefix": "bab58d068885a900",
+    "K_required": 100,
+    "epochs_ours": 20,
+    "B": 200,
+    "debug": true
   },
-  {
-    "run_id": "01_brainsync__b4f31914__20260920T093548Z",
-    "method": "brainsync",
-    "n_subjects": 49,
-    "ident_accuracy": 0.9591836734693877,
-    "alignment_gain": -4.6537555730175154e-05,
-    "nonidentifiable_pairs": 469,
-    "perm_p": 0.004975124378109453,
-    "data_hash": "bab58d068885a900",
-    "notes": "per_pair_uncertainty unfilled",
-    "K": 100,
-    "epochs": 100
-  },
-  {
-    "run_id": "02_fugw__cf2f95f4__20260920T093601Z",
-    "method": "fugw",
-    "n_subjects": 49,
-    "ident_accuracy": 0.9183673469387755,
-    "alignment_gain": -0.004947090344352626,
-    "nonidentifiable_pairs": 466,
-    "perm_p": 0.004975124378109453,
-    "data_hash": "bab58d068885a900",
-    "notes": "per_pair_uncertainty unfilled",
-    "K": 100,
-    "epochs": 100
-  },
-  {
-    "run_id": "03_conn_srm__0777ce05__20260920T093617Z",
-    "method": "conn_srm",
-    "n_subjects": 49,
-    "ident_accuracy": 0.08163265306122448,
-    "alignment_gain": 0.3954539023443999,
-    "nonidentifiable_pairs": 467,
-    "perm_p": 0.01990049751243781,
-    "data_hash": "bab58d068885a900",
-    "notes": "per_pair_uncertainty unfilled",
-    "K": 100,
-    "epochs": 100
-  }
-]
+  "results": [
+    {
+      "run_id": "00_noalign__eebd2f8e__20260920T093535Z",
+      "method": "noalign",
+      "n_subjects": 49,
+      "n_pairs": 500,
+      "permutations_B": 200,
+      "ident_accuracy": 0.9591836734693877,
+      "ident_ci": [
+        0.8979591836734694,
+        1.0
+      ],
+      "alignment_gain": 0.0,
+      "nonidentifiable_pairs": 500,
+      "perm_p": 0.004975124378109453,
+      "null_max": 0.08163265306122448,
+      "per_pair_uncertainty": null,
+      "status": "ok",
+      "beta": 28.98189562137408,
+      "data_hash_content": "bab58d068885a9006085df483a9ed8770fefc14f996c0118128a12ed6cd70778",
+      "K": 100,
+      "epochs": 100,
+      "notes": "per_pair_uncertainty unfilled"
+    },
+    {
+      "run_id": "01_brainsync__b4f31914__20260920T093548Z",
+      "method": "brainsync",
+      "n_subjects": 49,
+      "n_pairs": 500,
+      "permutations_B": 200,
+      "ident_accuracy": 0.9591836734693877,
+      "ident_ci": [
+        0.8979591836734694,
+        1.0
+      ],
+      "alignment_gain": -4.6537555730175154e-05,
+      "nonidentifiable_pairs": 469,
+      "perm_p": 0.004975124378109453,
+      "null_max": 0.08163265306122448,
+      "per_pair_uncertainty": null,
+      "status": "ok",
+      "beta": 28.98189562137408,
+      "data_hash_content": "bab58d068885a9006085df483a9ed8770fefc14f996c0118128a12ed6cd70778",
+      "K": 100,
+      "epochs": 100,
+      "notes": "per_pair_uncertainty unfilled"
+    },
+    {
+      "run_id": "02_fugw__cf2f95f4__20260920T093601Z",
+      "method": "fugw",
+      "n_subjects": 49,
+      "n_pairs": 500,
+      "permutations_B": 200,
+      "ident_accuracy": 0.9183673469387755,
+      "ident_ci": [
+        0.8367346938775511,
+        0.9795918367346939
+      ],
+      "alignment_gain": -0.004947090344352626,
+      "nonidentifiable_pairs": 466,
+      "perm_p": 0.004975124378109453,
+      "null_max": 0.10204081632653061,
+      "per_pair_uncertainty": null,
+      "status": "ok",
+      "beta": 28.98189562137408,
+      "data_hash_content": "bab58d068885a9006085df483a9ed8770fefc14f996c0118128a12ed6cd70778",
+      "K": 100,
+      "epochs": 100,
+      "notes": "per_pair_uncertainty unfilled"
+    },
+    {
+      "run_id": "03_conn_srm__0777ce05__20260920T093617Z",
+      "method": "conn_srm",
+      "n_subjects": 49,
+      "n_pairs": 500,
+      "permutations_B": 200,
+      "ident_accuracy": 0.08163265306122448,
+      "ident_ci": [
+        0.02040816326530612,
+        0.16326530612244897
+      ],
+      "alignment_gain": 0.3954539023443999,
+      "nonidentifiable_pairs": 467,
+      "perm_p": 0.01990049751243781,
+      "null_max": 0.08163265306122448,
+      "per_pair_uncertainty": null,
+      "status": "ok",
+      "beta": 28.98189562137408,
+      "data_hash_content": "bab58d068885a9006085df483a9ed8770fefc14f996c0118128a12ed6cd70778",
+      "K": 100,
+      "epochs": 100,
+      "notes": "per_pair_uncertainty unfilled"
+    },
+    {
+      "run_id": "10_ours_full__081aaddd__20260920T093707Z",
+      "method": "ours_full",
+      "n_subjects": 49,
+      "n_pairs": 500,
+      "permutations_B": 200,
+      "ident_accuracy": 0.8571428571428571,
+      "ident_ci": [
+        0.7551020408163265,
+        0.9387755102040817
+      ],
+      "alignment_gain": 0.018054067101284182,
+      "nonidentifiable_pairs": 472,
+      "perm_p": 0.004975124378109453,
+      "null_max": 0.10204081632653061,
+      "per_pair_uncertainty": 0.0016484607853567202,
+      "status": "ok",
+      "beta": 28.98189562137408,
+      "data_hash_content": "bab58d068885a9006085df483a9ed8770fefc14f996c0118128a12ed6cd70778",
+      "K": 100,
+      "epochs": 20,
+      "notes": ""
+    },
+    {
+      "run_id": "11_ours_ablated__70a81655__20260920T093707Z",
+      "method": "ours_ablated",
+      "n_subjects": 49,
+      "n_pairs": 500,
+      "permutations_B": 200,
+      "ident_accuracy": 0.8571428571428571,
+      "ident_ci": [
+        0.7551020408163265,
+        0.9387755102040817
+      ],
+      "alignment_gain": 0.018054067101284182,
+      "nonidentifiable_pairs": 472,
+      "perm_p": 0.004975124378109453,
+      "null_max": 0.10204081632653061,
+      "per_pair_uncertainty": 0.00245505698101678,
+      "status": "ok",
+      "beta": 28.98189562137408,
+      "data_hash_content": "bab58d068885a9006085df483a9ed8770fefc14f996c0118128a12ed6cd70778",
+      "K": 100,
+      "epochs": 20,
+      "notes": ""
+    }
+  ]
+}
