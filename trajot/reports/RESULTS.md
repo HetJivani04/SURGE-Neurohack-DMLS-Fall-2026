@@ -140,6 +140,8 @@ Planted-GT synthetic (`synthetic_gap_results.json`, v2; N=60, R=K=50, β=29.189,
 
 **Coverage: reported, not sold.** Raw quantile coverage of planted P* is 0.004 — the detached entropy Jacobian makes posterior draws overconfident. A held-out temperature-calibrated interval reaches 0.973, which is a calibration device, **not** Bayes coverage; `coverage_is_bayes=false` in the artifact. Do not cite coverage as a calibrated result until the Jacobian term is wired.
 
+**No ground-truth correspondence at rest.** Rest has no shared time axis and no known vertex correspondence between subjects, so nothing on real data can be scored against a true alignment; the planted correspondence above is the only ground truth in this document.
+
 
 ---
 
@@ -227,11 +229,11 @@ The regenerated N=83 gap table now carries a full-cohort group block — n_subje
 
 ## 7. Claim discipline appendix
 
-- **Finitely many optima; single-point minimizers are not claimed.** Gromov–Wasserstein is invariant to isometries (Mémoli 2011); the feature term reduces the isometry orbit to **finitely many optima** (Demetci et al., AISTATS 2024). No unique minimizer is asserted.
+- **Finitely many optima; single-point minimizers are not claimed.** Gromov–Wasserstein is invariant to isometries (Mémoli 2011); the feature term reduces the isometry orbit to **finitely many optima** (Demetci et al., AISTATS 2024). No single optimizer is asserted.
 - **Inherited components are attributed.** Subject-to-template plans with a barycenter: **FUGW** (Thual et al., NeurIPS 2022). Amortized encoder: **ULOT** (Mazelet, Flamary, Thirion, NeurIPS 2025). Distributions over transport plans: **Mallasto, Gerolin, Minh** (ACML 2021) and **De et al.** (ICML 2026). Alignment variance in the group model: **Keller, Roche, Tucholka, Thirion** (*Statistica Sinica* 2008); Hu et al. (ICLR 2025) for learned registration. GW objective: **Mémoli** (*FoCM* 2011) and **Demetci et al.** (PMLR 238, 2024). Nearest neighbour **OTTER** (bioRxiv 2026) has soft mass, not a posterior/hierarchy.
-- **Absences are search-based.** The assembled object — population distribution over latent alignment couplings with shrinkage on the transport polytope for cross-subject rest-fMRI — was **not found** in the sources we checked. Stated as a search result, not as a metaphysical claim.
-- **Band prior is a band prior, not dynamics.** It constrains frequency content of a coupling; weight 0 in frozen runs.
-- **No behavioural prediction is reported.** Marek et al. 2022: median brain–behaviour |r| ≈ 0.01 at N=3,928; ds000243 has 120 subjects.
+- **Absences are search-based.** The assembled object — population distribution over latent alignment couplings with shrinkage on the transport polytope for cross-subject rest-fMRI — is unclaimed in the sources we checked: **no such work was found**. Stated as a search result, not as a metaphysical claim.
+- **The band prior is a band prior and not a dynamics model.** It constrains frequency content of a coupling; weight 0 in frozen runs.
+- **No behavioural or cognitive prediction is reported as a metric.** **Marek et al. 2022** report a median brain–behaviour correlation of **|r| = 0.01 at N = 3,928**; ds000243 has 120 subjects; any such number here would be noise presented as a result.
 - **Random-effects collapse identity.** Group model reduces to the one-sample t-test when alignment variance → 0; tested, not asserted.
 - **Do not claim:** ID superiority where the CI includes 0; **no identification claim at all under per-subject-map protocols (map-invariant artifact — Haar control = 83/83)**; calibrated coverage on real rest; gain-null nonident counts as scientific rates; conn_srm as a gain competitor. (The ident branch of the pre-declared rule was overridden by the map-invariance control; the N=83 claim is reliability-only — no cross-dataset generalization is claimed.)
 
@@ -265,3 +267,31 @@ The regenerated N=83 gap table now carries a full-cohort group block — n_subje
 ## 9. Reproducing a row
 
 Every harness row is regenerable from `scripts/run_real_gap_sota.py` + `scripts/verify_real_sota.py` against the named artifacts and data root. `compare.py` reads only `runs/index.csv` + `metrics.json` and never re-runs training. Long train PIDs on the machine were **not** killed for this write-up.
+
+---
+
+## 10. The results table — frozen N=49 pilot comparison (superseded; exactly as `compare.py` rendered it)
+
+The six-row five-column table below is **exactly what `compare.py` rendered** at freeze time (`reports/results_table.md`). It is the superseded frozen N=49 pilot comparison, kept as the honest ledger entry (the primary N=83 claim table is §5b; the N=49 replication table is §2). The ablated row is the latest successful ablated run at freeze time (N=33), not an N=49 estimate.
+
+| Method | Identification acc. | vs null (p) | Per-pair uncertainty | Non-identifiable pairs flagged |
+|---|---|---|---|---|
+| No alignment | 0.96 [0.90, 1.00] | 0.0050 | — | — |
+| BrainSync | 0.96 [0.90, 1.00] | 0.0050 | — | — |
+| FUGW | 0.92 [0.84, 0.98] | 0.0050 | — | — |
+| connectivity-SRM | 0.08 [0.02, 0.16] | 0.0199 | — | — |
+| **Ours (ablated)** | 0.85 [0.73, 0.97] | 0.0050 | 0.103 | 472 |
+| **Ours (full)** | 0.86 [0.76, 0.94] | 0.0050 | 0.075 | 472 |
+
+- Declared pair subsample: 500 ordered subject pairs, seed 2026
+- Draw procedure: ordered pairs (a, b) of distinct subjects drawn without replacement via numpy.random.default_rng(seed).choice over lexicographic ordered pairs (default_rng.choice without replacement over lexicographic pair index; trajot.eval.folds.sample_pairs / make_folds)
+- Fold scheme: two-run identification: each subject's run 1 is the query against the gallery of run 2 and vice versa, both folds holding the same sorted subject list (trajot.eval.folds.make_two_run_splits)
+- beta: 29.189086229914952
+
+Source runs:
+- No alignment: 00_noalign__eebd2f8e__20260920T074351Z
+- BrainSync: 01_brainsync__b4f31914__20260920T074433Z
+- FUGW: 02_fugw__cf2f95f4__20260920T074534Z
+- connectivity-SRM: 03_conn_srm__0777ce05__20260920T074652Z
+- Ours (ablated): 11_ours_ablated__56a17400__20260920T071555Z
+- Ours (full): 10_ours_full__dd67ab1e__20260920T074747Z
