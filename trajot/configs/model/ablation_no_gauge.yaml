@@ -1,0 +1,13 @@
+# Ablation: the velocity-augmented gauge-fixing feature term is removed.
+# Identical to model/default.yaml except for `gauge_features`.
+K: 512
+d: 32
+r: 32
+m_draws: 4
+batch_subjects: 8
+sinkhorn:
+  L: 30
+  eps: [0.1, 0.01]
+beta:
+  warmup_frac: 0.3
+gauge_features: false

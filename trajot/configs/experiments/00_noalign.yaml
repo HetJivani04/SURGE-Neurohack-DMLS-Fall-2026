@@ -1,0 +1,19 @@
+# No alignment baseline (identity / anatomical correspondence).
+experiment: 00_noalign
+
+# Referenced configs, relative to this file. Their content is merged in under
+# the keys `model` and `eval`.
+includes:
+  model: ../model/default.yaml
+  eval: ../eval/default.yaml
+
+run:
+  seed: 0
+  n_jobs: 1
+
+eval:
+  pairs:
+    n: 500
+    seed: 2026
+  permutations:
+    B: 10000
