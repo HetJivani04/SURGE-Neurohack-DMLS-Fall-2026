@@ -297,7 +297,7 @@ def fit_ours_same_Q(
     extra = {
         "subjects": list(subjects),
         "data_root": str(data_root),
-        "beta_target": BETA_REAL,
+        "beta_target": float(BETA_REAL),
         "run_dir": str(artifacts),
         "region_indices": region_indices,
     }
@@ -342,7 +342,7 @@ def fit_baseline_transform(
     extra = {
         "subjects": list(subjects),
         "data_root": str(data_root),
-        "beta_target": BETA_REAL,
+        "beta_target": float(BETA_REAL),
     }
     if region_indices is not None:
         extra["region_indices"] = region_indices
@@ -601,6 +601,7 @@ def build_cfg(data_root: Path) -> Any:
 
 
 def main(argv: list[str] | None = None) -> int:
+    global BETA_REAL
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--data-root",
@@ -613,6 +614,14 @@ def main(argv: list[str] | None = None) -> int:
         default=PROJECT_ROOT / "runs" / "10_ours_full__73533e35__20260920T074217Z" / "artifacts",
     )
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_TABLES)
+    parser.add_argument("--out-stem", type=str, default="REAL_sota_stats",
+                        help="output basename (e.g. REAL_sota_stats_n83)")
+    parser.add_argument("--cohort-file", type=Path, default=None,
+                        help="subject list file (default: frozen_cohort_n49 via gap_mod)")
+    parser.add_argument("--n-subjects", type=int, default=None,
+                        help="if set, take first N two-run subjects from manifest when no cohort-file")
+    parser.add_argument("--beta", type=float, default=BETA_REAL,
+                        help="cohort beta (N=49: 29.189; N=83: 28.438)")
     parser.add_argument("--n-boot", type=int, default=10000)
     parser.add_argument("--n-pairs", type=int, default=N_PAIRS)
     parser.add_argument(
@@ -622,6 +631,8 @@ def main(argv: list[str] | None = None) -> int:
         help="baselines + ours; conn_srm intentionally optional/invalid on gain",
     )
     parser.add_argument("--group-subjects", type=int, default=12)
+    parser.add_argument("--fugw-limit", type=int, default=None,
+                        help="optional cap on FUGW subject count for runtime")
     parser.add_argument("--skip-ts", action="store_true")
     args = parser.parse_args(argv)
 
@@ -631,10 +642,32 @@ def main(argv: list[str] | None = None) -> int:
 
     data_root = Path(args.data_root)
     cfg = build_cfg(data_root)
+    beta_use = float(args.beta)
+    BETA_REAL = beta_use
+    gap_mod.BETA_REAL = beta_use
     t0 = time.time()
-    print(f"verify_real_sota: data_root={data_root} n_boot={args.n_boot}", flush=True)
+    print(
+        f"verify_real_sota: data_root={data_root} n_boot={args.n_boot} beta={beta_use} "
+        f"N={args.n_subjects or args.cohort_file or 'default'}",
+        flush=True,
+    )
 
-    subjects, run1, run2, bundle = gap_mod.load_cohort(data_root, load_ts=not args.skip_ts)
+    subjects_arg = None
+    if args.cohort_file is not None:
+        cohort_path = Path(args.cohort_file)
+        subjects_arg = [ln.strip() for ln in cohort_path.read_text().splitlines() if ln.strip()]
+    elif args.n_subjects is not None:
+        from trajot.io.contract import read_manifest as _read_manifest
+        from trajot.io.contract import two_run_subjects
+
+        all_ids = two_run_subjects(_read_manifest(data_root), strict=False)
+        subjects_arg = all_ids[: int(args.n_subjects)]
+    subjects, run1, run2, bundle = gap_mod.load_cohort(
+        data_root,
+        subjects=subjects_arg,
+        load_ts=not args.skip_ts,
+        cohort_file=args.cohort_file,
+    )
     ts_map = bundle["timeseries"]
     pairs = gap_mod._declared_pairs(subjects, n_pairs=args.n_pairs, seed=PAIRS_SEED)
     print(f"loaded N={len(subjects)} R={run1.shape[1]} pairs={len(pairs)}", flush=True)
@@ -886,20 +919,22 @@ def main(argv: list[str] | None = None) -> int:
         method_rows.append(compact)
 
     payload = {
-        "table": "REAL_sota_stats",
+        "table": str(args.out_stem),
         "protocol": {
             "same_Q_both_runs": True,
             "transform": "T(C)=(1-lam)C + lam Q^T C Q with Q_s,lam_s from run1+posterior",
             "n_boot": args.n_boot,
             "n_pairs": args.n_pairs,
             "pairs_seed": PAIRS_SEED,
-            "beta": BETA_REAL,
+            "beta": beta_use,
             "ident_bootstrap": "recompute top-1 on resampled subject galleries",
             "reliability": "corr(vec(T(C1)), vec(T(C2))) per subject",
             "claim_rule": (
                 "SOTA if 95% CI ident_delta excludes 0 positive vs any of "
                 "noalign/BrainSync/FUGW, OR reliability_delta CI excludes 0 vs "
-                "noalign with non-negative point deltas vs BrainSync/FUGW"
+                "noalign with non-negative point deltas vs BrainSync/FUGW. "
+                "Pre-registered task_sota_reliability requires reliability CI exclude 0 "
+                "vs ALL of noalign/BrainSync/FUGW."
             ),
         },
         "data_root": str(data_root),
@@ -938,14 +973,16 @@ def main(argv: list[str] | None = None) -> int:
         "created_unix": time.time(),
         "runtime_sec": time.time() - t0,
         "notes": (
-            "Statistical verification of REAL N=49 posterior_shrink SOTA. "
-            "conn_srm not treated as a valid gain competitor. Coverage not headlined."
+            f"Statistical verification of REAL N={len(subjects)} posterior_shrink SOTA. "
+            f"beta={beta_use}. conn_srm not treated as a valid gain competitor. "
+            "Coverage not headlined."
         ),
     }
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / "REAL_sota_stats.json"
+    out_stem = str(args.out_stem)
+    out_path = out_dir / f"{out_stem}.json"
 
     def _jsonify(obj: Any) -> Any:
         if isinstance(obj, dict):
@@ -965,7 +1002,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # compact gap-columns markdown for reports / issue comment
     md_lines = [
-        "# REAL N=49 gap columns + SOTA stats",
+        f"# {out_stem} gap columns + SOTA stats",
         "",
         f"- claim: **{verdict['sota_claim']}** — {verdict['claim_text']}",
         f"- same-Q both runs: {payload['protocol']['same_Q_both_runs']}",
@@ -1049,7 +1086,7 @@ def main(argv: list[str] | None = None) -> int:
         payload["literature_motivation"]["why_gap_columns_matter"],
         "",
     ]
-    md_path = out_dir / "REAL_sota_stats.md"
+    md_path = out_dir / f"{out_stem}.md"
     md_path.write_text("\n".join(md_lines) + "\n")
     print(f"wrote {md_path}", flush=True)
     print(json.dumps({"verdict": verdict, "gap": {k: gap.get(k) for k in ("tau_phi_mean", "group_neff", "high_tau_gt_median_x2", "high_tau_gt_p90", "group_neff_lt_S")}}, indent=2), flush=True)
