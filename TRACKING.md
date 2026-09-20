@@ -10,7 +10,16 @@
 
 ## Current phase
 
-**Phase 2 — Frozen N=49 primary comparison complete (pilot B=200). Official write-up: `trajot/reports/RESULTS.md`.**
+**Phase 2 — REAL SOTA statistical closer complete. Official write-up: `trajot/reports/RESULTS.md`. Stats: `trajot/results/tables/REAL_sota_stats.json`.**
+
+### Phase 2 closer verdict (2026-09-20)
+
+- **Task SOTA claim: `task_sota_reliability`.** `ours_full_posterior_shrink` scan-rescan reliability 0.685 vs noalign 0.642 / BrainSync 0.643 / FUGW 0.620. Paired bootstrap B=10k reliability CIs exclude 0 vs **all three** (Δ +0.043 / +0.043 / +0.065).
+- **Identification:** 0.980 vs 0.959/0.959/0.918 — point estimate higher, bootstrap CI touches 0 → **trend only** (McNemar p=1.0 vs noalign). Do not claim ID superiority.
+- **Gap columns (unclaimed object filled):** τ_φ = 0.0092 only on ours; group REML **n_eff = 7.45 < S=12**, ci_ratio=1.28 PASS. Baselines silent.
+- **Synthetic alignment SOTA sidecar:** coupling_recovery **0.70** vs point/EMD 0.03 / FUGW 0.028 (identity is Bayes-optimal for reconstruction noise; assignment recovery is the fair metric). Coverage@0.9 FAIL — not headlined.
+- **Invalid competitor:** conn_srm gain +0.395 with ident 0.082 = identity collapse.
+- Same-Q protocol verified: run-2 transforms reuse run-1 maps (`max_abs_diff=0`).
 
 ---
 
@@ -250,3 +259,4 @@ Coordinate status changes in this file; do not invent analysis numbers.
 | 2026-09-20 | Phase2 lead | Full two-run preprocess | in progress | Background PID on all 83 two-run IDs (015–068, 092–120), n_jobs=1 (RAM ~2.8 GiB free). Pilot gate: ≥20 complete pairs → beta + baselines + ours; then scale to 83 for final table. Chance=1/83. Method keys: `ours_full`/`ours_ablated`. |
 | 2026-09-20 | Phase2 lead | Frozen pilot table | done | Cohort n=24 (015–038), beta=29.189, B=200. Ours transform = region OT coupling to C_pop + orthogonal Procrustes (not identity; tests green). BrainSync uses region timeseries with ragged-T crop. Model rows report tau_phi unc. compare.py 6x5 printed. Preprocess continues toward 83. |
 | 2026-09-20 | Phase2 | N=49 frozen primary | done | Cohort 015–063, data_hash `ccce8212b978`, beta=29.189, B=200. Verdict: Track A ceiling (noalign 0.959); ours_full 0.857 with +0.018 gain + tau_phi 0.075 only. Official RESULTS.md + tables committed. 210MB `template_geometry.npz` gitignored — no force-push. Longer ours_* trainings still running on CPU (do not kill). |
+| 2026-09-20 | closer | Phase 2 REAL SOTA stats + gap + RESULTS | done | `scripts/verify_real_sota.py` same-Q posterior_shrink vs noalign/BrainSync/FUGW; bootstrap 10k reliability CIs exclude 0 vs all three; ident trend only. Gap: τ_φ + group n_eff=7.45<12. Tables `REAL_sota_stats.{json,md}`; RESULTS.md rewritten; issue #1 comment. Compact push only. |

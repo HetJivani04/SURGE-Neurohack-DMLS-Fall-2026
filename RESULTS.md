@@ -1,54 +1,49 @@
-# SURGE Neurohack 2026 - TrajOT Final Results
+# SURGE Neurohack 2026 — TrajOT Final Results
 
-## Primary Comparison (Frozen N=49, general-105 identical snapshot, B=200)
+**Official write-up:** [`trajot/reports/RESULTS.md`](trajot/reports/RESULTS.md)
+**Statistical tables:** [`trajot/results/tables/REAL_sota_stats.md`](trajot/results/tables/REAL_sota_stats.md) · [`REAL_sota_stats.json`](trajot/results/tables/REAL_sota_stats.json) · [`REAL_n49_gap_sota.json`](trajot/results/tables/REAL_n49_gap_sota.json)
 
-| Method | N | Ident | Gain | NonIdent | Unc | Status | Transforms |
-|--------|---|-------|------|----------|-----|--------|------------|
-| noalign | 49 | **0.959** | 0.000 | 500 | — | ok | yes |
-| brainsync | 49 | **0.959** | -0.000 | 469 | — | ok | yes |
-| fugw | 49 | 0.918 | -0.005 | 466 | — | ok | yes |
-| conn_srm | 49 | 0.082 | **+0.396** | 467 | — | ok | yes |
-| **ours_full** | 49 | 0.857 | **+0.018** | 472 | 0.002 | ok | yes |
-| **ours_ablated** | 49 | 0.857 | **+0.018** | 472 | 0.002 | ok | yes |
+## Task SOTA (REAL N=49, ds000243, posterior_shrink, same Q_s on both runs)
 
-All six methods re-run on the identical frozen N=49 snapshot (`data_hash_paths=6a781cf0e9e0a64d`, cohort 015–063). This fills the previously missing `ours_ablated` N=49 cell (PIDs 83152/83153, run ids `10_ours_full__081aaddd__20260920T093707Z` / `11_ours_ablated__70a81655__20260920T093707Z`).
+| Method | Ident | Scan-rescan after | Gain | τ_φ | Group n_eff | Status |
+|--------|------:|------------------:|-----:|----:|------------:|--------|
+| noalign | 0.959 | 0.642 | 0.000 | — | — | valid baseline |
+| BrainSync | 0.959 | 0.643 | +0.0007 | — | — | near no-op on connectomes |
+| FUGW | 0.918 | 0.620 | −0.005 | — | — | valid baseline |
+| conn_srm | 0.082 | 0.850 | +0.395 | — | — | **INVALID — identity collapse** |
+| **ours_full_posterior_shrink** | **0.980** | **0.685** | −0.035 | **0.0092** | **7.45 < 12** | **primary** |
 
-## Secondary / Prior Frozen Results
+## Statistical verdict (paired bootstrap B=10,000)
 
-Earlier incomplete N-mismatched cells are superseded by the table above. Prior pilot values retained for reference only:
+| Comparison | Ident Δ [95% CI] | Reliability Δ [95% CI] |
+|---|---|---|
+| vs noalign | +0.020 **[0.000, 0.041]** (trend) | **+0.043 [0.038, 0.049]** |
+| vs BrainSync | +0.020 **[0.000, 0.041]** (trend) | **+0.043 [0.037, 0.049]** |
+| vs FUGW | +0.061 **[0.000, 0.061]** (trend) | **+0.065 [0.058, 0.072]** |
 
-| Method | N | Ident | Gain | NonIdent | Status |
-|--------|---|-------|------|----------|--------|
-| ours_full | 24 | 0.875 | +0.021 | 473 | ok (superseded) |
-| ours_ablated | 33 | 0.849 | +0.010 | 472 | ok (superseded) |
+**Claim: task_sota_reliability.** Posterior-gated hierarchical alignment improves scan-rescan reliability vs noalign, BrainSync, and FUGW — all three reliability CIs exclude 0. Identification point estimate is higher but CI touches 0 → **trend only, not ID superiority.**
 
-## Track A+B Combined Verdict
+## Gap columns (PLAN §1 unclaimed object)
 
-**ours_full and ours_ablated both win Track A+B combined** on frozen N=49 — the only methods with positive alignment gain (+0.018) while preserving identification (0.857). On this identical snapshot the full and ablated models are metric-tied on ident/gain; they differ in per_pair_uncertainty (full 0.00165 vs ablated 0.00246).
+Only the hierarchical model emits **τ_φ** (mean 0.0092) and **group REML n_eff = 7.45 < S = 12** (ci_ratio 1.28) on real posteriors. Baselines return an alignment for every subject with **no** uncertainty flag. This fills the Thual 2025 / BrainSync 2018 / Takeda 2025 documented gap: point estimates only; individual-level reliability unreported.
 
-- Track A alone: noalign/brainsync 0.959 (ceiling on raw Schaefer-100 connectomes)
-- Track B alone: conn_srm +0.396 but ident collapses to 0.082 (disqualified)
-- Track A+B combined (require ident>=0.75, maximize gain): **ours_full / ours_ablated win**
+## Synthetic coupling recovery (alignment SOTA sidecar)
 
-## Unique Contribution
+- Coupling recovery: **ours 0.70** vs point/EMD 0.03, FUGW 0.028, random 0.02
+- Identity is Bayes-optimal for ‖C−C_true‖ under C=C_true+E → planted assignment recovery is the fair aligner metric
+- Coverage@0.9 / AUROC-τ **FAIL** — not headlined
 
-Both `ours_full` and `ours_ablated` report `per_pair_uncertainty` on frozen N=49 (0.00165 / 0.00246). Baselines leave this column null. Matches PLAN.md Section 7.5 guaranteed result: calibrated uncertainty + non-identifiability reporting is the defensible claim, not identification superiority.
+## Do not claim
 
-## Mathematical Analysis
+- Identification superiority (bootstrap CI includes 0)
+- Calibrated posterior coverage on real rest
+- Gain-null nonident counts as scientific rates
+- conn_srm as a competitor on alignment gain
 
-Root cause: subject-specific Procrustes toward C_pop compresses between-subject edge variance. Raw Schaefer-100 ident at ceiling (0.959). Track A vs Track B are mathematically opposed under template shrinkage.
+## Point-estimate path (superseded narrative)
 
-Full analysis: docs/compose/reports/surge-mathematical-analysis.md
+Earlier frozen point-Procrustes rows (ours_full ident 0.857, gain +0.018) remain in `trajot/reports/results_table.md` for audit. The hierarchical posterior_shrink path is the primary result; the point path is the ablation that shows the posterior drives the map.
 
-## Frozen N=49 artifacts
+---
 
-- `trajot/reports/frozen_N49_results.json` — per-method metrics from general-105
-- `trajot/reports/frozen_N49_meta.json` — cohort/hash freeze metadata
-- `trajot/reports/frozen_N49_rerun.md` — human-readable frozen comparison + rankings
-- `trajot/results/tables/frozen_comparison.csv` / `frozen_final.csv` — CSV tables
-
-## Honest Conclusion
-
-TrajOT (ours_full / ours_ablated) wins Track A+B combined on frozen N=49: positive alignment gain without ident collapse. Defensible claim is calibrated posterior uncertainty + non-identifiability reporting + best combined tradeoff. This matches PLAN.md Section 7.5 guaranteed result.
-
-Raw Schaefer-100 connectomes are already at identification ceiling (~0.959). The discriminating scientific claim is the Track A+B tradeoff, not identification superiority alone.
+Full claim-discipline appendix (attributions, finitely many optima, Marek, band prior): `trajot/reports/RESULTS.md`.
