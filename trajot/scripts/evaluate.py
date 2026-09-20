@@ -328,6 +328,26 @@ def evaluate_method(
                         per_pair_uncertainty = None
         if per_pair_uncertainty is None and isinstance(meta, dict) and meta.get("tau_phi_mean") is not None:
             per_pair_uncertainty = float(meta["tau_phi_mean"])
+        # Last resort for model rows: load tau_phi.npz from the declared artifacts directory
+        # (run_experiment points ours_artifacts at runs/<id> when present).
+        if per_pair_uncertainty is None:
+            art = ours_artifacts or (meta or {}).get("ours_artifacts") or (meta or {}).get("template_path")
+            if art:
+                art_dir = Path(str(art))
+                if art_dir.name != "artifacts" and (art_dir / "artifacts").is_dir():
+                    art_dir = art_dir / "artifacts"
+                tau_path = art_dir / "tau_phi.npz"
+                if tau_path.is_file():
+                    try:
+                        with np.load(tau_path) as z:
+                            keys = [k for k in z.files if str(k).startswith("sub-")] or list(z.files)
+                            vals = [float(np.mean(np.asarray(z[k], dtype=np.float64))) for k in keys]
+                            if vals:
+                                per_pair_uncertainty = float(np.mean(vals))
+                                meta = dict(meta or {})
+                                meta["tau_phi_source"] = str(tau_path)
+                    except Exception:
+                        pass
 
     per_pair_flags: list[bool] | None = None
     if is_model_method:

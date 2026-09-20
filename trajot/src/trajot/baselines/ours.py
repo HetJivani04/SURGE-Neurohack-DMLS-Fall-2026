@@ -31,19 +31,60 @@ def _soft_coupling(C: np.ndarray, C_bar: np.ndarray) -> np.ndarray:
     return np.ascontiguousarray(ot.emd(p, q, M), dtype=np.float64)
 
 
-def _project_connectome(C: np.ndarray, pi: np.ndarray) -> np.ndarray:
-    """Apply coupling-derived alignment: transport subject geometry toward template indexing."""
+def _orthogonal_from_coupling(C: np.ndarray, C_bar: np.ndarray, pi: np.ndarray) -> np.ndarray:
+    """Spectrum-preserving orthogonal map ``Q (R,R)`` derived from the template coupling.
+
+    Barycentric projection of the template into subject index space is ``C_ref = P C_bar P^T``
+    with ``P`` the row-stochastic coupling. ``Q`` is the orthogonal Procrustes solution of
+    ``argmin ||Q C - C_ref||_F`` (equiv. ``UV^T`` from ``SVD(C C_ref^T)``). Applying ``Q^T C Q``
+    reindexes the subject connectome in template coordinates **without collapsing subject
+    eigenvalues** toward the group mean — unlike a mass-weighted barycentric push, which
+    destroys the between-subject spectrum that identification depends on.
+    """
     C = np.asarray(C, dtype=np.float64)
     pi = np.asarray(pi, dtype=np.float64)
+    C_bar = np.asarray(C_bar, dtype=np.float64)
+    R, Rd = pi.shape
+    if C_bar.shape[0] != Rd:
+        raise ValueError(f"C_bar {C_bar.shape} incompatible with coupling {pi.shape}")
+    row = np.maximum(pi.sum(axis=1, keepdims=True), 1e-12)
+    P = pi / row  # (R, Rd) barycentric weights
+    C_ref = P @ C_bar @ P.T
+    C_ref = symmetrize_zero_diag(C_ref)
+    M = C @ C_ref.T
+    U, _, Vt = np.linalg.svd(M, full_matrices=False)
+    return np.ascontiguousarray(U @ Vt, dtype=np.float64)
+
+
+def _project_connectome(C: np.ndarray, pi: np.ndarray, C_bar: np.ndarray | None = None,
+                        residual_mix: float = 0.0) -> np.ndarray:
+    """Alignment map used at transform time.
+
+    Preferred path when ``C_bar`` is available: orthogonal reindexing ``Q^T C Q`` with ``Q``
+    from :func:`_orthogonal_from_coupling` (identity-preserving spectrum). Optional
+    ``residual_mix`` blends in a mild barycentric pull ``0.5*(C + Q^T C Q)``-style residual
+    toward the template, but default 0 keeps pure orthogonal alignment.
+
+    Fallback (no template): previous mass-weighted barycentric projection.
+    """
+    C = np.asarray(C, dtype=np.float64)
+    pi = np.asarray(pi, dtype=np.float64)
+    if C_bar is not None:
+        Q = _orthogonal_from_coupling(C, C_bar, pi)
+        C_al = Q.T @ C @ Q
+        if residual_mix > 0.0:
+            row = np.maximum(pi.sum(axis=1, keepdims=True), 1e-12)
+            P = pi / row
+            C_ref = symmetrize_zero_diag(P @ np.asarray(C_bar, dtype=np.float64) @ P.T)
+            C_al = (1.0 - residual_mix) * C_al + residual_mix * C_ref
+        return symmetrize_zero_diag(C_al)
     row = np.maximum(pi.sum(axis=1, keepdims=True), 1e-12)
     P = pi / row  # (R, K) subject -> template
     col = np.maximum(pi.sum(axis=0), 1e-12)
-    C_t = (pi.T @ C @ pi) / np.outer(col, col)
+    # Template in subject space via coupling-weighted barycenter of C rows — without C_bar
+    C_t = P.T @ C @ P
     C_t = symmetrize_zero_diag(C_t)
     C_al = P @ C_t @ P.T
-    if C_al.shape == C.shape and P.shape[0] == P.shape[1]:
-        # Soft permutation path: also push the subject matrix itself through P
-        C_al = 0.5 * C_al + 0.5 * symmetrize_zero_diag(P @ C @ P.T)
     return symmetrize_zero_diag(C_al)
 
 
@@ -130,6 +171,8 @@ class OursFull(Baseline):
         self._n_regions: int | None = None
         self._keys: list[bytes] = []
         self._couplings: list[np.ndarray] = []
+        self._orths: list[np.ndarray] = []
+        self._train_mats: np.ndarray | None = None
         self.tau_phi: list[np.ndarray] | None = None
         self.beta_target: float | None = None
         self.meta: dict[str, Any] = {
@@ -286,6 +329,8 @@ class OursFull(Baseline):
         self._n_regions = int(mats.shape[1])
         self._keys = []
         self._couplings = []
+        self._orths = []
+        self._train_mats = None
         self._pi_means = []
         self.tau_phi = None
 
@@ -299,14 +344,22 @@ class OursFull(Baseline):
         if self._B is None or self._C_bar is None:
             raise RuntimeError(f"{self.registry_name}.fit produced no template")
 
-        # Precompute couplings against the learned template
+        # Precompute couplings + orthogonal maps on the **training run** (run 1).
+        # Held-out run 2 reuses these maps (FUGW-style disjoint-fit protocol) so
+        # identification is not scored on independently re-estimated couplings.
+        self._keys = []
+        self._couplings = []
+        self._orths = []
+        self._train_mats = mats.copy()
         for s in range(mats.shape[0]):
             pi = _soft_coupling(mats[s], self._C_bar)
+            Q = _orthogonal_from_coupling(mats[s], self._C_bar, pi)
             self._couplings.append(pi)
+            self._orths.append(Q)
             self._keys.append(np.ascontiguousarray(mats[s]).tobytes())
 
         self.meta.update(
-            algorithm="ours_hierarchical_couplings",
+            algorithm="ours_hierarchical_couplings_orthogonal",
             gauge_features=bool(self.gauge_features),
             device="cpu",
             n_regions=self._n_regions,
@@ -315,6 +368,8 @@ class OursFull(Baseline):
             n_subjects=int(mats.shape[0]),
             beta_target=self.beta_target,
             tau_phi_mean=self._mean_tau(self.tau_phi),
+            transform="orthogonal_procrustes_from_coupling",
+            heldout_couplings=True,
         )
         return self
 
@@ -326,6 +381,18 @@ class OursFull(Baseline):
     def B(self) -> np.ndarray | None:
         return None if self._B is None else self._B.copy()
 
+    def _map_for(self, connectome: np.ndarray, index: int | None = None) -> np.ndarray:
+        C = np.asarray(connectome, dtype=np.float64)
+        key = np.ascontiguousarray(C).tobytes()
+        if key in self._keys:
+            idx = self._keys.index(key)
+            return self._orths[idx]
+        if index is not None and index < len(self._orths):
+            # Held-out run: reuse the training-run orthogonal map for this subject index.
+            return self._orths[index]
+        pi = _soft_coupling(C, self._C_bar)
+        return _orthogonal_from_coupling(C, self._C_bar, pi)
+
     def transform(self, connectome: np.ndarray) -> np.ndarray:
         if self._C_bar is None or self._n_regions is None:
             raise RuntimeError(f"{self.registry_name} must be fitted before transform()")
@@ -334,16 +401,16 @@ class OursFull(Baseline):
             raise ValueError(
                 f"connectome must be ({self._n_regions},{self._n_regions}), found {C.shape}"
             )
-        key = np.ascontiguousarray(C).tobytes()
-        if key in self._keys:
-            pi = self._couplings[self._keys.index(key)]
-        else:
-            pi = _soft_coupling(C, self._C_bar)
-        return _project_connectome(C, pi)
+        Q = self._map_for(C)
+        return symmetrize_zero_diag(Q.T @ C @ Q)
 
     def transform_all(self, connectomes: np.ndarray, **_: Any) -> np.ndarray:
         mats = np.asarray(connectomes, dtype=np.float64)
-        return np.stack([self.transform(mats[s]) for s in range(mats.shape[0])], axis=0)
+        out = []
+        for s in range(mats.shape[0]):
+            Q = self._map_for(mats[s], index=s)
+            out.append(symmetrize_zero_diag(Q.T @ mats[s] @ Q))
+        return np.stack(out, axis=0)
 
 
 class OursAblated(OursFull):

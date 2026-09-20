@@ -76,9 +76,20 @@ def main(argv: Iterable[str] | None = None) -> int:
             make_synthetic_npz(root, seed=int(seed), **SYNTHETIC)
             beta_target, beta_note = None, f"beta fixed at model.beta.synthetic ({cfg.get('model.beta.synthetic')}): synthetic data"
         else:
-            beta = calibrate_beta(root, out_dir=run_dir / "artifacts")  # the only place beta is computed: 83 two-run subjects
+            from trajot.io.contract import read_manifest, two_run_subjects
+            ids = two_run_subjects(read_manifest(root), strict=False)
+            if len(ids) == 83:
+                beta = calibrate_beta(root, out_dir=run_dir / "artifacts")
+            elif ids:
+                # Pilot / partial cohorts: calibrate on the available two-run subjects only.
+                beta = calibrate_beta(root, subjects=ids, out_dir=run_dir / "artifacts")
+            else:
+                raise RuntimeError("no two-run subjects in manifest; preprocess before fit")
             beta_target = beta["beta"]
-            beta_note = f"beta {beta_target:.6g} calibrated from {beta['n_subjects']} two-run subjects"
+            beta_note = (
+                f"beta {beta_target:.6g} calibrated from {beta['n_subjects']} two-run subjects "
+                f"(sigma_hat_C^2={beta['sigma_hat_C_squared']:.6g}, R={beta['n_regions']})"
+            )
             logger.log(f"calibrated {beta_note}")
 
         data = load_train_data(root, cfg, subjects, beta_target)
