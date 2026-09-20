@@ -3802,8 +3802,8 @@
     "notes": "Identity is Bayes-optimal for ||C - C_true|| when C = C_true + E, so reconstruction error to noisy connectomes is not a fair alignment SOTA metric. Coupling recovery (assignment of planted correspondence) is."
   },
   "verdict": {
-    "sota_claim": "task_sota_ident_and_reliability",
-    "claim_text": "Posterior-gated hierarchical alignment improves identification and scan-rescan reliability on real ds000243 with bootstrap CIs excluding 0.",
+    "sota_claim": "task_sota_reliability",
+    "claim_text": "Posterior-gated hierarchical alignment improves scan-rescan reliability on real ds000243 vs noalign, BrainSync and FUGW (paired bootstrap 95% CIs exclude 0 for all three). Identification is NOT claimed: the same-map identification metric is invariant to any per-subject invertible map (fitted, permuted and Haar-random maps all give 1.0).",
     "ident_ci_excludes_zero_positive": true,
     "reliability_ci_excludes_zero_vs_all_compared": true,
     "reliability_ci_excludes_zero_vs_noalign": true,
@@ -3812,7 +3812,8 @@
       "ID superiority if bootstrap CI includes 0",
       "Calibrated coverage on real rest",
       "Gain-null nonident counts as scientific rate",
-      "conn_srm as competitor on gain"
+      "conn_srm as competitor on gain",
+      "Identification superiority under same-map protocols (map-invariant; Haar-random control = 1.0)"
     ],
     "notes": [
       "ours_full_posterior_shrink_entropy vs noalign: ident_delta=0.08433734939759041 CI=[0.012048192771084265, 0.07228915662650603]; reliability_delta=0.05192967718110326 CI=[0.04803075995399196, 0.055789643370106355]",
@@ -3821,7 +3822,8 @@
       "ident_ci_excludes_zero_positive_any_baseline=True",
       "reliability_ci_excludes_zero_vs_all_compared=True",
       "reliability_ci_excludes_zero_vs_noalign=True",
-      "reliability_point_nonneg_vs_all_compared=True"
+      "reliability_point_nonneg_vs_all_compared=True",
+      "Identification is NOT claimable under per-subject same-map protocols: the metric is invariant to the map (fitted, permuted and Haar-random per-subject maps all give 1.0; identity 0.9157; single common map 0.9036). Use a leak-free (cross-fitted) protocol to assess identification."
     ]
   },
   "literature_motivation": {

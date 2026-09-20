@@ -545,6 +545,15 @@ def verdict_from_stats(stats: dict[str, Any]) -> dict[str, Any]:
     )
     reliability_claim = (rel_vs_noalign_sig or rel_vs_all) and rel_point_nonneg
 
+    ident_ci_excludes_zero_positive = ident_win  # factual CI report; ident carries no claim here
+    notes.append(
+        "Identification is NOT claimable under per-subject same-map protocols: the metric "
+        "is invariant to the map (fitted, permuted and Haar-random per-subject maps all "
+        "give 1.0; identity 0.9157; single common map 0.9036). Use a leak-free "
+        "(cross-fitted) protocol to assess identification."
+    )
+    ident_win = False  # map-invariance control: same-map ident is uninterpretable
+
     if ident_win and reliability_claim:
         sota_claim = "task_sota_ident_and_reliability"
         claim_text = (
@@ -556,16 +565,18 @@ def verdict_from_stats(stats: dict[str, Any]) -> dict[str, Any]:
         if rel_vs_all:
             claim_text = (
                 "Posterior-gated hierarchical alignment improves scan-rescan reliability "
-                "on real ds000243 vs noalign, BrainSync, and FUGW (paired bootstrap "
-                "95% CIs exclude 0 for all three). Identification point estimates are "
-                "in comparisons; claim identification only if its CI excludes 0."
+                "on real ds000243 vs noalign, BrainSync and FUGW (paired bootstrap 95% "
+                "CIs exclude 0 for all three). Identification is NOT claimed: the same-map "
+                "identification metric is invariant to any per-subject invertible map "
+                "(fitted, permuted and Haar-random maps all give 1.0)."
             )
         else:
             claim_text = (
                 "Posterior-gated hierarchical alignment improves scan-rescan reliability "
                 "vs noalign (CI excludes 0) and is non-inferior (non-negative point "
-                "delta) vs BrainSync/FUGW; identification is reported as a trend if CI "
-                "includes 0."
+                "delta) vs BrainSync/FUGW. Identification is NOT claimed: the same-map "
+                "identification metric is invariant to any per-subject invertible map "
+                "(fitted, permuted and Haar-random maps all give 1.0)."
             )
     else:
         sota_claim = "no_statistical_win"
@@ -573,14 +584,16 @@ def verdict_from_stats(stats: dict[str, Any]) -> dict[str, Any]:
             "Neither identification nor reliability bootstrap CIs exclude 0 in the "
             "positive direction vs the SOTA bar. Report point estimates as trends only."
         )
-    notes.append(f"ident_ci_excludes_zero_positive_any_baseline={ident_win}")
+    notes.append(
+        f"ident_ci_excludes_zero_positive_any_baseline={ident_ci_excludes_zero_positive}"
+    )
     notes.append(f"reliability_ci_excludes_zero_vs_all_compared={rel_vs_all}")
     notes.append(f"reliability_ci_excludes_zero_vs_noalign={rel_vs_noalign_sig}")
     notes.append(f"reliability_point_nonneg_vs_all_compared={rel_point_nonneg}")
     return {
         "sota_claim": sota_claim,
         "claim_text": claim_text,
-        "ident_ci_excludes_zero_positive": ident_win,
+        "ident_ci_excludes_zero_positive": ident_ci_excludes_zero_positive,
         "reliability_ci_excludes_zero_vs_all_compared": rel_vs_all,
         "reliability_ci_excludes_zero_vs_noalign": rel_vs_noalign_sig,
         "reliability_point_nonneg_vs_compared": rel_point_nonneg,
@@ -589,6 +602,7 @@ def verdict_from_stats(stats: dict[str, Any]) -> dict[str, Any]:
             "Calibrated coverage on real rest",
             "Gain-null nonident counts as scientific rate",
             "conn_srm as competitor on gain",
+            "Identification superiority under same-map protocols (map-invariant; Haar-random control = 1.0)",
         ],
         "notes": notes,
     }
