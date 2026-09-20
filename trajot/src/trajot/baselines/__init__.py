@@ -16,7 +16,12 @@ from .conn_srm import ConnSRM
 from .fugw import FUGW
 from .harness import align_features, run_baseline
 from .noalign import NoAlign
-from .ours import OursAblated, OursFull
+from .ours import (
+    OursAblated,
+    OursFull,
+    mix_identity_orthogonal,
+    pool_pi_to_regions,
+)
 
 __all__ = [
     "Baseline",
@@ -34,6 +39,8 @@ __all__ = [
     "AblatedModel",
     "OursFull",
     "OursAblated",
+    "mix_identity_orthogonal",
+    "pool_pi_to_regions",
     "run_baseline",
     "align_features",
     "cfg_get",

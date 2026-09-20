@@ -1,0 +1,17 @@
+{
+  "cohort": "ds000243 N=49 frozen 015-063",
+  "data_root": "/Users/anandlo/Surge2026F/ds000243-master",
+  "artifacts": "/tmp/surge-coord/trajot/runs/10_ours_full__081aaddd__20260920T093707Z/artifacts",
+  "metric": "mean heldout -||C_run2 - C_aligned||_F^2 (higher better)",
+  "posterior_shrink_tau_gated": -1630.6739909380615,
+  "point_procrustes_C_pop": -783.4469814229942,
+  "ours_ablated_point_procrustes": -783.4469814229942,
+  "noalign_identity": -701.6458331431263,
+  "wins_full_over_noalign": 0,
+  "wins_full_over_point": 0,
+  "wins_point_over_noalign": 9,
+  "n_subjects": 49,
+  "lambda_mean": 0.9997281823645168,
+  "tau_phi_mean": 0.0016484607853567202,
+  "note": "REAL primary. posterior_shrink implemented and path-verified; does NOT beat noalign on held-out residual. No win claim."
+}
