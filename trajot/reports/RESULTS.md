@@ -1,9 +1,10 @@
 # Results: hierarchical population-of-couplings for rest-fMRI alignment
 
-**Status: Phase 2 REAL N=83 statistical closer COMPLETE and PRIMARY. Cohort 015–068 + 092–120 (83 strict two-run subjects), ds000243, Schaefer-100, beta = 28.438 (scan-rescan). Same subject-level map Q_s on both runs (Q_s fit on run-1, applied to both). Claim `task_sota_ident_and_reliability` EARNED at N=83: identification and reliability 95% CIs exclude 0 vs noalign/BrainSync/FUGW (10k paired bootstrap; McNemar exact p < 0.02). N=49 is retained as replication. This document does not invent wins.**
+**Status: Phase 2 REAL N=83 statistical closer COMPLETE and PRIMARY. Cohort 015–068 + 092–120 (83 strict two-run subjects), ds000243, Schaefer-100, beta = 28.438 (scan-rescan). Same subject-level map Q_s on both runs (Q_s fit on run-1, applied to both). Claim `task_sota_reliability` EARNED at N=83 (reliability 95% CIs exclude 0 vs noalign/BrainSync/FUGW, 10k paired bootstrap); identification NOT claimed — the same-map protocol is map-invariant (Haar-random and permuted maps also score 83/83); see §5b. N=49 is retained as replication. This document does not invent wins.**
 
 Canonical tables (N=83 PRIMARY):
 - `trajot/results/tables/REAL_sota_stats_n83_posterior_entropy.{json,md}` — **read this first**: N=83 same-Q SOTA stats, entropy-λ (headline)
+- `trajot/results/tables/REAL_sota_stats_n83_entropy.{json,md}` — independent replication of the same N=83 entropy-λ stats (same numbers; identification not claimed — §5b)
 - `trajot/results/tables/REAL_sota_stats_n83_posterior_tau.{json,md}` — N=83 same-Q SOTA stats, τ-λ variant (same verdict, smaller Δrel)
 - `trajot/results/tables/REAL_n83_gap_sota_summary.md` — N=83 method-table summary
 - `trajot/results/tables/REAL_n83_gap_sota.{json,md}` — N=83 method table
@@ -83,7 +84,7 @@ Notes:
 
 ## 3. Task SOTA claim — N=49 (replication; statistical verification)
 
-**Claim rule (pre-declared):** claim task SOTA only if the paired-bootstrap 95% CI for `(ident_ours − ident_baseline)` excludes 0 in the positive direction, **or** reliability_delta is positive with CI excluding 0 vs noalign (and non-negative / significant vs BrainSync/FUGW). Identification superiority is **not** claimed when the CI includes 0.
+**Claim rule (pre-declared):** claim task SOTA only if the paired-bootstrap 95% CI for `(ident_ours − ident_baseline)` excludes 0 in the positive direction, **or** reliability_delta is positive with CI excluding 0 vs noalign (and non-negative / significant vs BrainSync/FUGW). Identification superiority is **not** claimed when the CI includes 0. **Post-hoc override (2026-09-20):** the identification branch was overridden by the map-invariance control — under per-subject same-map protocols the ident metric is trivially perfect for any map family (fitted / Haar-random / permuted all 83/83), so the N=83 claim rests on the reliability branch alone (§5b).
 
 ### Paired bootstrap, B=10,000 (subject-level; ID bootstrap recomputes top-1 on resampled galleries)
 
@@ -95,7 +96,7 @@ Notes:
 
 ### Verdict (N=49, replication): **task_sota_reliability** — claim holds at N=49
 
-Superseded by the N=83 claim (§5b), where identification is earned rather than trend-only.
+Superseded by the N=83 claim (§5b) — **reliability only**; identification was withdrawn there as a protocol artifact (map-invariance control).
 
 > **Posterior-gated hierarchical alignment improves scan-rescan reliability on real ds000243 vs noalign, BrainSync, and FUGW** (paired bootstrap 95% CIs exclude 0 for all three: Δ_rel = +0.043 / +0.043 / +0.065). **Identification point estimate is higher** (0.980 vs 0.959 / 0.959 / 0.918) **but ident bootstrap CIs touch 0** — reported as a **trend only**, not as ID superiority.
 
@@ -142,7 +143,7 @@ Planted-GT synthetic (`synthetic_gap_results.json`, v2; N=60, R=K=50, β=29.189,
 
 ---
 
-## 5b. N=83 scale-up — COMPLETE; PRIMARY claim earned (2026-09-20)
+## 5b. N=83 scale-up — COMPLETE; PRIMARY reliability claim earned (2026-09-20)
 
 Manifest rebuilt from all contract npz: **195 rows / 112 subjects / 83 strict two-run** (015–068 + 092–120; equal n_volumes per subject). Freeze: `results/tables/freeze_n83/`. `data_hash=4e6703055921b762fa77241438ea6e4f9fbd90a26cc926210c03c1546e5ee0ca`.
 
@@ -164,9 +165,11 @@ Protocol: same-map — `Q_s` fit on run-1 and applied to **both** runs, `T(C) = 
 | BrainSync | 0.9036 | 75/83 | 0.6461 |
 | FUGW | 0.9036 | 75/83 | 0.6215 |
 
+**Ident column caveat:** under this same-map protocol the Ident column is **protocol-invariant and not interpretable for per-subject maps** — controls on the real N=83 cache score fitted Q = 1.0, Haar-random Q = 1.0, permuted fitted Q = 1.0 (identity 0.9157; single common map 0.9036). Identification is therefore not claimed; the Ident column and the McNemar stats below are retained for the ledger only (withdrawal note in the verdict).
+
 conn_srm on N=83 remains **INVALID** (identity collapse: ident 0.024, gain +0.386) and is not a gain competitor.
 
-### Paired bootstrap B=10,000 — ours_full_posterior_shrink_entropy − baseline (all CIs exclude 0 positively)
+### Paired bootstrap B=10,000 — ours_full_posterior_shrink_entropy − baseline (reliability CIs exclude 0 positively; ident Δ / McNemar retained for the ledger only — protocol-invariant, not a claim)
 
 | Baseline | Ident Δ | Ident 95% CI | Reliability Δ | Reliability 95% CI | McNemar (ours-correct / base-wrong) | McNemar exact p |
 |---|---:|---|---:|---|---|---:|
@@ -174,14 +177,14 @@ conn_srm on N=83 remains **INVALID** (identity collapse: ident 0.024, gain +0.38
 | BrainSync | +0.0964 | **[0.0120, 0.0843]** | +0.0513 | **[0.0472, 0.0552]** | 8 / 0 | **0.0078** |
 | FUGW | +0.0964 | **[0.0120, 0.0843]** | +0.0759 | **[0.0705, 0.0814]** | 8 / 0 | **0.0078** |
 
-### Verdict: **task_sota_ident_and_reliability** — claim EARNED at N=83
+### Verdict: **task_sota_reliability** — claim EARNED at N=83; identification WITHDRAWN (protocol artifact)
 
-> **Posterior-gated hierarchical alignment improves identification and scan-rescan reliability on real ds000243 with bootstrap CIs excluding 0.**
+> **Posterior-gated hierarchical alignment improves scan-rescan reliability on real ds000243 vs noalign, BrainSync, and FUGW** — Δrel **+0.0519** [0.0480, 0.0558] / **+0.0513** [0.0472, 0.0552] / **+0.0759** [0.0705, 0.0814] (10k paired bootstrap; point estimates ours 0.6975 / noalign 0.6455 / BrainSync 0.6461 / FUGW 0.6215). **Identification is not claimed** — the same-map protocol is map-invariant.
 
-- Identification is now a **claim, not a trend**: the ident CI lower bound is close to 0 (**0.0120**) but excludes it, and McNemar exact supports it (7–8 discordant pairs, all ours-correct / base-wrong; p = 0.0156 / 0.0078 / 0.0078). At N=49 the same comparison had a single discordant pair (McNemar p=1.0) — the N=83 cohort earns the stronger claim.
-- Reliability Δrel vs noalign / BrainSync / FUGW = **+0.052 / +0.051 / +0.076**, all CIs exclude 0.
-- **τ-λ variant** (`REAL_sota_stats_n83_posterior_tau.{json,md}`, `λ_mean=0.893`): same verdict, smaller Δrel (+0.0122 / +0.0116 / +0.0362, all CIs exclude 0). Entropy-λ is the headline (larger Δrel).
-- No cross-dataset claim: this is ds000243 rest, same-map protocol only.
+- **Spectral mechanism (derived and numerically verified).** `T_λ(C) = (1−λ)C + λ Qᵀ C Q` acts on `vec(C)` as `M_λ = (1−λ)I + λR`, `R = Qᵀ ⊗ Qᵀ` orthogonal with eigenvalues `e^{iθ}` (θ = φ_i − φ_j); attenuation `|g(θ)|² = 1 − 2λ(1−λ)(1−cos θ)`, which at λ = 1/2 is `cos²(θ/2)`. λ = 0 and λ = 1 are both correlation-neutral; **λ = 1/2 is the unique maximally-filtering interior point**, and the real-data λ-sweep peaks exactly at 0.50 (0.6975; 0.4→0.6942, 0.6→0.6939). Energy accounting: the shared component carries 29.9% of its energy in the passband vs 19.0% for the run-difference (bottom quartile 11.7% vs 18.5%) — the filter removes run noise preferentially. The posterior row-entropy gate `λ_s = 1/(1+(H_s/H₀)²)` makes λ adaptive per subject.
+- **Controls isolate template-directed denoising.** Reliability at λ = 0.5 on the real N=83 cache: raw 0.6455; Haar-random maps 0.6454 (zero gain — not generic smoothing); permuted fitted maps 0.6708 (≈half the gain); single common template map 0.6919 (89% of the gain); fitted subject maps 0.6975. So **≥89% of the reliability gain is template-directed denoising using no subject-specific run-1 information**; the subject-specific increment is **+0.006**.
+- **Identification withdrawal.** Under the per-subject same-map protocol (map fitted on run-1, applied to both runs), identification accuracy is fitted Q = 1.0, Haar-random Q = 1.0, permuted fitted Q = 1.0, single common map = 0.9036, identity/no-map = 0.9157. Any per-subject map family makes the protocol trivially perfect (the correct pair shares its map; wrong pairs are compared across mismatched maps), so identification is uninterpretable for per-subject maps. The earlier draft claim `task_sota_ident_and_reliability` (commit ed7b984, not pushed) is **retracted**.
+- **τ-λ variant** (`REAL_sota_stats_n83_posterior_tau.{json,md}`, `λ_mean=0.893`): reliability Δrel +0.0122 / +0.0116 / +0.0362, all CIs exclude 0 — same reliability verdict, smaller Δrel. No cross-dataset claim: this is ds000243 rest, same-map protocol only.
 
 ### Superseded: fallback-path bootstrap (artifacts 73533e35; honest ledger)
 
@@ -195,15 +198,16 @@ The earlier 49/83-posterior run produced fallback-path numbers (full N=83 fallba
 | 24 (smoke) | 13.91 | 2.57 | 1.244 | YES |
 | 12 (N=49 closer) | 7.45 | 2.46 | 1.277 | YES |
 
-The committed N=83 table's group column carries the 12-subject smoke flags (`n_eff = nan`); full-N=83 REML is a follow-up, not part of this claim. Baselines still leave τ_φ / Σ^al null.
+The regenerated N=83 gap table now carries a full-cohort group block — n_subjects = 83, n_eff = **61.5718** (min 50.311), ci_ratio = 1.1473, **no NaN** (degenerate-node limit fix: n_eff = #{u=inf} for τ²+σ²=0 nodes; verified by ε-perturbation). n_eff < S = 83 honest; caveat: under the stored unit subject-map normalisation this is a machinery check, not a scientific estimate. Baselines still leave τ_φ / Σ^al null.
 
 ### N=83 claim verdict (honest)
 
-1. **`task_sota_ident_and_reliability` on full N=83: EARNED** — hierarchical maps applied to all 83 subjects (same-Q); ident and reliability 95% CIs exclude 0 vs all three baselines; McNemar exact p < 0.02.
-2. **N=49 retained as replication** (`REAL_sota_stats.json`; verdict was `task_sota_reliability`, ident trend-only at that N).
-3. **Superseded history:** the first N=83 attempt (artifacts 73533e35, 49/83 posteriors, EMD-Procrustes fallback) is documented above — it is not the primary claim.
-4. **Gap columns:** τ_φ + group REML n_eff < S on max available (28.50 < 49) — baselines silent; full-N=83 REML is a follow-up.
-5. **Do not claim:** ID superiority where a CI includes 0 (satisfied here); calibrated coverage on real rest; gain-null nonident counts; conn_srm on gain; cross-dataset generalization.
+1. **`task_sota_reliability` on full N=83: EARNED** — hierarchical maps applied to all 83 subjects (same-Q); reliability 95% CIs exclude 0 vs all three baselines (Δrel **+0.0519** [+0.0480, +0.0558] / **+0.0513** [+0.0472, +0.0552] / **+0.0759** [+0.0705, +0.0814]; 10k paired bootstrap).
+2. **Identification is NOT claimed** — the same-map protocol is map-invariant: fitted, Haar-random, and permuted maps all score 83/83 (identity 0.9157; single common map 0.9036); the ident CIs and McNemar stats in §5b are not a scientific result.
+3. **N=49 retained as replication** (`REAL_sota_stats.json`; verdict was `task_sota_reliability`, ident trend-only at that N — identification remains unclaimed at every N).
+4. **Superseded history:** the first N=83 attempt (artifacts 73533e35, 49/83 posteriors, EMD-Procrustes fallback) is documented above — it is not the primary claim.
+5. **Gap columns:** τ_φ + group REML n_eff < S on full N=83 — regenerated group block: n_subjects=83, **n_eff=61.5718** (min 50.311), ci_ratio=1.1473, **no NaN** (degenerate-node limit fix: n_eff = #{u=inf} for τ²+σ²=0 nodes; verified by ε-perturbation). n_eff < S = 83 honest. Caveat: under the stored unit subject-map normalisation this is a machinery check, not a scientific estimate.
+6. **Do not claim:** ID superiority where a CI includes 0; **identification superiority under per-subject-map protocols (map-invariant artifact — Haar control = 83/83)**; calibrated coverage on real rest; gain-null nonident counts; conn_srm on gain; cross-dataset generalization.
 
 ---
 
@@ -213,11 +217,11 @@ The committed N=83 table's group column carries the 12-subject smoke flags (`n_e
 2. **c_bar Procrustes retry** — heldout residual −1617, gain −0.400. Learned BB^T is a poor EMD target vs empirical C_pop. One retry; no further invented wins.
 3. **Native-gauge heldout_score_module** — ours does not beat noalign/FUGW on this residual (−775 vs −702/−704). Metric caveat: Q≠I inflates residual to native-gauge run2. SOTA claim uses same-Q reliability instead.
 4. **conn_srm** — high gain via identity collapse (ident 0.082). Disqualified as a gain competitor.
-5. **Identification superiority at N=49** — point estimate won (0.980) but bootstrap CI touched 0; McNemar p=1.0 vs noalign (one discordant subject). **Trend only at N=49.** At N=83 the same test is decisive (7–8 discordant pairs, p < 0.02; §5b).
+5. **Identification superiority at N=49** — point estimate won (0.980) but bootstrap CI touched 0; McNemar p=1.0 vs noalign (one discordant subject). **Trend only at N=49.** At N=83 the same test appeared decisive (7–8 discordant pairs, p < 0.02; §5b) but was subsequently shown to be a protocol artifact and **withdrawn** — identification is unclaimed at every N under per-subject-map protocols.
 6. **Cross-subject alignment_gain** — ours_full_posterior_shrink is negative (−0.035). Positive gain without collapse is **not** the headline; reliability under a shared subject map is.
 7. **Gain-null nonident counts** — saturate under degenerate nulls; not a scientific uncertainty rate. Posterior τ / REML n_eff are the uncertainty surface.
 8. **Long-run scan-length sensitivity** — not run on the frozen two-run cohort (long runs are one-run subjects).
-9. **N=83 hierarchical posterior_shrink (first attempt, artifacts 73533e35)** — was INCOMPLETE: posteriors covered 49/83 subjects and the transform fell back to `region_emd_procrustes` (ident degraded, 0.843 vs ~0.90–0.92 baselines). **Superseded**: artifacts `9d7dab12` cover 83/83 with the hierarchical path active; the N=83 claim is earned (§5b).
+9. **N=83 hierarchical posterior_shrink (first attempt, artifacts 73533e35)** — was INCOMPLETE: posteriors covered 49/83 subjects and the transform fell back to `region_emd_procrustes` (ident degraded, 0.843 vs ~0.90–0.92 baselines). **Superseded**: artifacts `9d7dab12` cover 83/83 with the hierarchical path active; the N=83 **reliability** claim is earned (§5b).
 
 ---
 
@@ -229,7 +233,7 @@ The committed N=83 table's group column carries the 12-subject smoke flags (`n_e
 - **Band prior is a band prior, not dynamics.** It constrains frequency content of a coupling; weight 0 in frozen runs.
 - **No behavioural prediction is reported.** Marek et al. 2022: median brain–behaviour |r| ≈ 0.01 at N=3,928; ds000243 has 120 subjects.
 - **Random-effects collapse identity.** Group model reduces to the one-sample t-test when alignment variance → 0; tested, not asserted.
-- **Do not claim:** ID superiority where the CI includes 0 (the N=83 primary claim satisfies this rule — ident 95% CI [0.0120, …] excludes 0, McNemar p < 0.02 — but no cross-dataset generalization is claimed); calibrated coverage on real rest; gain-null nonident counts as scientific rates; conn_srm as a gain competitor.
+- **Do not claim:** ID superiority where the CI includes 0; **no identification claim at all under per-subject-map protocols (map-invariant artifact — Haar control = 83/83)**; calibrated coverage on real rest; gain-null nonident counts as scientific rates; conn_srm as a gain competitor. (The ident branch of the pre-declared rule was overridden by the map-invariance control; the N=83 claim is reliability-only — no cross-dataset generalization is claimed.)
 
 ---
 
@@ -244,7 +248,7 @@ The committed N=83 table's group column carries the 12-subject smoke flags (`n_e
 - pairs **500** seed **2026**; bootstrap **B=10,000**; McNemar exact on identification discordance
 - Ours artifacts: `runs/10_ours_full__9d7dab12__20260920T140613Z/artifacts` — **posteriors for all 83 subjects**
 - Transform: `posterior_shrink_tau_gated`, `posterior_drives_transform=true`, `lambda_source=row_entropy` (headline; λ_mean=0.500); τ-λ variant λ_mean=0.893 — same verdict
-- Claim: **task_sota_ident_and_reliability EARNED** — ident + reliability 95% CIs exclude 0 vs noalign / BrainSync / FUGW; McNemar p = 0.0156 / 0.0078 / 0.0078
+- Claim: **task_sota_reliability EARNED** — reliability 95% CIs exclude 0 vs noalign / BrainSync / FUGW (Δrel +0.052 / +0.051 / +0.076); identification **withdrawn** (same-map protocol map-invariant — fitted / Haar-random / permuted all 83/83)
 - Python: `/Users/anandlo/.central_venv/bin/python3`
 
 ### N=49 (replication)
@@ -256,7 +260,7 @@ The committed N=83 table's group column carries the 12-subject smoke flags (`n_e
 - Ours artifacts: `runs/10_ours_full__73533e35__20260920T074217Z/artifacts`
 - Transform path: `posterior_shrink_tau_gated`, `posterior_drives_transform=true`, `tau0_auto=true`, λ_mean≈0.50
 - Group REML smoke: 12 subjects present in artifacts, n_eff=7.45, ci_ratio=1.28, PASS
-- Claim: `task_sota_reliability` holds at N=49; ident trend-only (superseded by N=83)
+- Claim: `task_sota_reliability` holds at N=49; ident trend-only at N=49; identification withdrawn at N=83 (protocol artifact — §5b)
 
 ## 9. Reproducing a row
 

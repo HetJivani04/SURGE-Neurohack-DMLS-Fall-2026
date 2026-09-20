@@ -120,10 +120,13 @@ def run_group_from_arrays(
     mean_sigma2 = np.asarray(reml["mean_sigma2"], dtype=np.float64)
 
     reml_meta = meta_analysis(reml["m"], reml["sigma2"], method=method)
+    n_degenerate_nodes = int(reml.get("n_degenerate_nodes", 0))
     notes = (
         f"method={method}; n_eff mean over {n_eff.size} template nodes; "
         f"ci_ratio = mean(se_reml/se_ttest); "
-        f"high-tau subjects down-weighted when mean_sigma2 is large"
+        f"high-tau subjects down-weighted when mean_sigma2 is large; "
+        f"n_degenerate_nodes = {n_degenerate_nodes} "
+        "(nodes with tau^2 + sigma^2 = 0 exactly; n_eff takes the equal-weight limit #{u = inf})"
     )
     return {
         "n_subjects": int(S),
@@ -134,6 +137,7 @@ def run_group_from_arrays(
         "mean_weight_per_subject": mean_weight.tolist(),
         "mean_sigma2": float(np.mean(mean_sigma2)),
         "mean_sigma2_per_subject": mean_sigma2.tolist(),
+        "n_degenerate_nodes": n_degenerate_nodes,
         "mean_tau_phi": np.asarray(reml["mean_tau_phi"], dtype=np.float64).tolist(),
         "reml_theta_se": float(np.mean(reml_se)),
         "ttest_theta_se": float(np.mean(ttest_se)),

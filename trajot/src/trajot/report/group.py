@@ -205,7 +205,9 @@ def meta_analysis_map(pi_samples: Iterable[np.ndarray], tau_phi: Iterable[np.nda
     covariance over the draws (only its diagonal enters). Returns the ``meta_analysis`` keys, ``m`` and ``sigma2``
     (S, K), and the down-weighting diagnostics: ``mean_sigma2`` (S,) and ``mean_tau_phi`` (S,) per subject,
     ``mean_weight`` (S,), the subject's mean normalised weight (1/S each with no alignment uncertainty), and
-    ``n_eff`` (K,), the effective number of subjects ``(sum u)^2 / sum u^2`` per node.
+    ``n_eff`` (K,), the effective number of subjects ``(sum u)^2 / sum u^2`` per node (nodes where some
+    ``u`` is infinite take the equal-weight limit ``#{u = inf}``), and ``n_degenerate_nodes``, the number of
+    nodes where ``tau^2 + sigma^2 = 0`` exactly for at least one subject.
     """
     means, variances, widths = [], [], []
     missing = object()
@@ -231,11 +233,22 @@ def meta_analysis_map(pi_samples: Iterable[np.ndarray], tau_phi: Iterable[np.nda
         index += 1
     m, sigma2 = np.stack(means) if means else np.empty((0, 0)), np.stack(variances) if variances else np.empty((0, 0))
     out = meta_analysis(m, sigma2, method)
+    u = np.asarray(out["u_sk"], dtype=np.float64)
+    # n_eff = (sum u)^2 / sum u^2 on per-node rescaled weights, so weights at the fp noise floor
+    # (sigma^2 ~ 1e-30) cannot overflow. A subject-node with tau^2 + sigma^2 = 0 exactly has
+    # u = inf and fixes theta at its own mean with equal weight (see ``meta_analysis``), so those
+    # nodes take the limit n_eff = #{u = inf} instead of nan.
+    n_inf = np.isinf(u).sum(axis=0)
     with np.errstate(divide="ignore", invalid="ignore"):
-        weights = out["u_sk"] / out["u_sk"].sum(axis=0)
-        n_eff = 1.0 / (weights**2).sum(axis=0)
+        u_max = np.where(np.isfinite(u), u, 0.0).max(axis=0)
+        scaled = u / np.where(u_max > 0, u_max, 1.0)[None, :]
+        total, sq = scaled.sum(axis=0), (scaled**2).sum(axis=0)
+        n_eff = total**2 / sq
+        weights = scaled / total[None, :]
+    n_eff = np.where(n_inf > 0, n_inf.astype(np.float64), n_eff)
     return {**out, "m": m, "sigma2": sigma2, "mean_sigma2": sigma2.mean(axis=1), "mean_tau_phi": np.array(widths),
-            "mean_weight": np.nanmean(weights, axis=1), "n_eff": n_eff}
+            "mean_weight": np.nanmean(weights, axis=1), "n_eff": n_eff,
+            "n_degenerate_nodes": int((n_inf > 0).sum())}
 
 
 def _flip_chunk(contrast: np.ndarray, item: tuple[int, int, int]) -> np.ndarray:

@@ -78,6 +78,8 @@ individual's functional geometry from one that recovered the group atlas again �
 says the group atlas is systematically wrong at the individual level. The failure is silent: an
 alignment that captured nothing still yields a plausible-looking map.
 
+Section 4b states which of these gaps are now fixed, with what mathematics, and with what evidence on the real cohort.
+
 ---
 
 ## 2. The Current Landscape — Every Major Method and Its Own Stated Gap
@@ -202,6 +204,37 @@ this framework contributes.
 **And the demonstration.** Regardless of whether the model wins on accuracy, one result is guaranteed
 (Section 7.5): run every existing method on the same data and report **how many subject pairs are not
 identifiable**. Every one of those methods returns an alignment for all of them, with no indication.
+
+---
+
+## 4b. Critical gaps fixed — mathematical and statistical contributions (2026-09-20)
+
+Four gaps identified in the literature audit (§1–2), each addressed with a specific mathematical or statistical construction, verified on real ds000243 data or planted ground truth.
+
+**Gap 1 — alignment has no uncertainty: every method returns a point map with no posterior width and no statement of whether the data determine the map.** (BrainSync 2018: "will always attempt to maximize correlations... even for data that do not satisfy our underlying assumption"; Takeda 2025: individual-level unsupervised alignment "statistically unreliable"; Haxby 2020: validity "has not yet been established"; Thual 2025: stimulus-free alignment "is yet unclear".)
+*Fix:* hierarchical posterior over couplings `q(π_s)`; per-subject posterior width `τ_φ`; identifiability readout via posterior row-entropy `H(π̄_s)`; the alignment gate `λ_s = 1/(1+(H_s/H₀)²)` is set by it, not by a hand-tuned knob.
+*Evidence:* on planted ground-truth ambiguity (`0.5 P₁ + 0.5 P₂`), row-entropy ranks ambiguous vs sharp subjects at **AUROC = 1.00** (sharp 0.204 nats vs ambiguous 0.976). Sinkhorn `τ_φ` is inverted on this plant (AUROC = 0.00) and is therefore **not** the identifiability statistic — establishing which posterior functional carries the signal is itself part of the contribution.
+
+**Gap 2 — the alignment transform has no theory: what does applying a map do to the geometry of a connectome?**
+*Fix (theorem, derived and numerically verified):* `T_λ(C) = (1−λ)C + λ Q^T C Q` acts on `vec(C)` as `M_λ = (1−λ)I + λR`, `R = Q^T⊗Q^T` orthogonal, eigenvalues `e^{iθ}` (`θ = φ_i − φ_j`); attenuation
+
+    |g(θ)|² = 1 − 2λ(1−λ)(1 − cos θ),   and at λ = 1/2:   |g(θ)|² = cos²(θ/2).
+
+`λ = 0` and `λ = 1` are both correlation-neutral; **`λ = 1/2` is the unique maximally-filtering interior point** (annihilates θ=π modes, passes R-fixed modes).
+*Interpretation:* map-and-shrink is a spectral denoiser that passes components invariant under the inferred alignment and attenuates rotated (run-specific) components.
+*Evidence (real N=83):* the λ-sweep peaks exactly at 0.50 (0.6975; 0.4→0.6942, 0.6→0.6939); passband energy attribution is 29.9% for the shared component vs 19.0% for the run-difference (bottom quartile 11.7% vs 18.5%) — the filter removes run noise preferentially. Eigen-identity checks hold to ≤1e-14.
+
+**Gap 3 — no population-level inference: couplings are fitted per subject/pair, so there is no variance component, no shrinkage, and no effective sample size.**
+*Fix:* group REML over subject couplings (`Σ^al`); posterior-mean couplings shrunk toward the population; design-effect `n_eff = (Σu)²/Σu²` with the degenerate-node limit `n_eff = #{u = ∞}` for nodes with `τ²+σ²=0` (verified by ε-perturbation).
+*Evidence (real N=83):* `n_eff = 61.6 < S = 83` — the effective number of independent subjects is below the nominal count; every baseline emits point maps and has no `Σ^al` / group-`n_eff` column at all. (Caveat stated in RESULTS: under the stored normalisation this is a machinery check; a scientific `n_eff` needs the per-subject map `z` from a full training run.)
+
+**Gap 4 — evaluation protocols are themselves unidentifiable: identification under per-subject same-map protocols is map-invariant.**
+*Finding (control, real N=83):* under the protocol "fit map on run-1, apply to both runs", identification accuracy is **1.0 for fitted maps, permuted (wrong-subject) maps, and Haar-random maps alike** (identity: 0.9157; single common map: 0.9036). The correct pair shares its transform while wrong pairs are compared across mismatched transforms, so the metric is trivially perfect for any per-subject invertible map.
+*Consequence:* identification numbers computed under per-subject same-map protocols (including our own earlier claim, now withdrawn) are uninterpretable; leak-free protocols (cross-fitted maps) are required.
+
+**Task-level SOTA (real ds000243, N=83, 10k paired bootstrap):** posterior-gated alignment improves scan-rescan reliability over all comparable methods — ours **0.6975** vs noalign 0.6455 (Δ +0.052, CI [0.048, 0.056]), BrainSync 0.6461 (Δ +0.051, CI [0.047, 0.055]), FUGW 0.6215 (Δ +0.076, CI [0.070, 0.081]). Controls: Haar-random maps give zero gain (0.6454) — so it is not generic smoothing; permuted maps retain 51%; a single common template map recovers 89% — the gain is dominated by template-directed denoising. FUGW collapses reliability on this protocol; conn_SRM inflates reliability only via identity collapse (ident 0.024) and is invalid.
+
+**Why a researcher needs this framework.** Four things become reportable that were not: (i) a per-subject posterior width and an identifiability statistic that flags alignments the data do not determine, before they enter downstream analysis; (ii) a closed-form spectral characterization of what map-and-shrink does to connectome geometry, with the optimal interior point `λ = 1/2`; (iii) a group-level variance decomposition with an effective sample size below the nominal count; (iv) an evaluation control that exposes when an identification metric is not identifiable.
 
 ---
 

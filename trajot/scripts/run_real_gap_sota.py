@@ -450,10 +450,14 @@ def _verdict(rows: list[dict[str, Any]], group: dict[str, Any] | None) -> dict[s
         )
         if k in by
     ]
-    # Valid ours: non-collapsed; among those pick highest gain_after, tie-break reliability_after
+    # Ranking metric (explicit): best_ours_row = argmax reliability_after among non-collapsed
+    # rows (tie-break gain_after). gain_after and ident_after are reported for that row as-is.
+    # The gain-maximal non-collapsed row is tracked separately (gain_ours) because gain_after
+    # and reliability_after are traded off across transform modes; gain comparisons use it.
     valid_ours = [r for r in ours_all if not r.get("collapsed", False)]
     pool = valid_ours or ours_all
-    ours = max(pool, key=lambda r: (r.get("gain_after") or -9e9, r.get("reliability_after") or -9e9)) if pool else None
+    ours = max(pool, key=lambda r: (r.get("reliability_after") or -9e9, r.get("gain_after") or -9e9)) if pool else None
+    gain_ours = max(pool, key=lambda r: (r.get("gain_after") or -9e9, r.get("reliability_after") or -9e9)) if pool else None
     noalign = by.get("noalign")
     brainsync = by.get("brainsync")
     fugw = by.get("fugw")
@@ -466,32 +470,51 @@ def _verdict(rows: list[dict[str, Any]], group: dict[str, Any] | None) -> dict[s
     def _noncollapsed(r: dict[str, Any] | None) -> bool:
         return bool(r) and not r.get("collapsed", False)
 
-    # Beat each baseline on gain_after at non-collapsed reliability/ident
+    # Beat each baseline on gain_after (gain-maximal ours row) and reliability_after (best ours row)
     beat = {}
+    beat_rel = {}
     for name, base in (("noalign", noalign), ("brainsync", brainsync), ("fugw", fugw), ("conn_srm", conn)):
         if ours is None or base is None:
             beat[name] = None
+            beat_rel[name] = None
             continue
         if base.get("collapsed"):
             beat[name] = True
+            beat_rel[name] = True
             notes.append(
                 f"{name} disqualified: identity/reliability collapse "
                 f"(ident_after={base.get('ident_after')}, reliability_after={base.get('reliability_after')})."
             )
             continue
         beat[name] = bool(
+            _noncollapsed(gain_ours)
+            and (gain_ours.get("gain_after") or 0.0) > (base.get("gain_after") or 0.0)
+        )
+        beat_rel[name] = bool(
             _noncollapsed(ours)
-            and (ours.get("gain_after") or 0.0) > (base.get("gain_after") or 0.0)
+            and (ours.get("reliability_after") or 0.0) > (base.get("reliability_after") or 0.0)
         )
         notes.append(
-            f"gain_after ours({ours['method']})={ours.get('gain_after')} vs {name}="
-            f"{base.get('gain_after')} at reliability_after ours={ours.get('reliability_after')} "
-            f"vs {name}={base.get('reliability_after')}; ident_after ours={ours.get('ident_after')} "
-            f"vs {name}={base.get('ident_after')} -> beat={beat[name]}"
+            f"gain_after best-gain ours({gain_ours['method']})={gain_ours.get('gain_after')} vs {name}="
+            f"{base.get('gain_after')}; reliability_after best-rel ours({ours['method']})="
+            f"{ours.get('reliability_after')} vs {name}={base.get('reliability_after')}; "
+            f"ident_after best-rel ours={ours.get('ident_after')} vs {name}={base.get('ident_after')} "
+            f"-> beat_gain={beat[name]} beat_reliability={beat_rel[name]}"
         )
 
-    sota_gain = bool(ours and (ours.get("gain_after") or 0) > 0 and _noncollapsed(ours))
-    beat_all = bool(all(beat.get(k) is True for k in ("noalign", "brainsync", "fugw")) and ours and _noncollapsed(ours))
+    notes.append(
+        f"Ranking metric for best_ours_row: reliability_after (higher better) among non-collapsed rows "
+        f"-> {ours['method'] if ours else None}; gain_after/ident_after reported for that row unchanged. "
+        f"Gain-maximal non-collapsed row (used for gain_after comparisons): "
+        f"{gain_ours['method'] if gain_ours else None}."
+    )
+
+    sota_gain = bool(gain_ours and (gain_ours.get("gain_after") or 0) > 0 and _noncollapsed(gain_ours))
+    beat_all = bool(
+        all(beat.get(k) is True for k in ("noalign", "brainsync", "fugw"))
+        and gain_ours
+        and _noncollapsed(gain_ours)
+    )
     # conn_srm often collapses; require beating it only if it is non-collapsed
     if conn is not None and not conn.get("collapsed"):
         beat_all = beat_all and bool(beat.get("conn_srm"))
@@ -540,6 +563,17 @@ def _verdict(rows: list[dict[str, Any]], group: dict[str, Any] | None) -> dict[s
             f"(min {group.get('n_eff_min')}); ci_ratio={group.get('ci_ratio')}. "
             "Baselines emit point maps with no Sigma^al / tau_phi column."
         )
+        mean_sigma2 = group.get("mean_sigma2")
+        n_deg = int(group.get("n_degenerate_nodes") or 0)
+        if n_deg > 0 or (mean_sigma2 is not None and float(mean_sigma2) < 1e-20):
+            notes.append(
+                "Track B caveat (honest): with the default unit subject map z=1 the coupling columns "
+                "normalise to nu, so every subject map is m=1 exactly and sigma^2 sits at the fp noise "
+                f"floor (mean_sigma2={mean_sigma2}); n_eff here is a machinery check, not a scientific "
+                f"estimate. n_degenerate_nodes={n_deg} (subject-nodes with tau^2+sigma^2=0 exactly, where "
+                "u=inf and n_eff takes the documented equal-weight limit #{u=inf}). A scientific Track-B "
+                "n_eff needs a real per-subject map z, which these artifacts do not store."
+            )
     if ours and ours.get("n_undetermined_subjects") is not None:
         notes.append(
             f"Track B undetermined subjects (mean_tau > tau0_eff={ours.get('tau0_eff')}): "
@@ -566,6 +600,11 @@ def _verdict(rows: list[dict[str, Any]], group: dict[str, Any] | None) -> dict[s
         "metric_protocol": "same_map_both_runs_v1",
         "heldout_protocol_wrong_not_headlined": True,
         "best_ours_row": ours.get("method") if ours else None,
+        "best_ours_row_ranking_metric": "reliability_after_non_collapsed",
+        "gain_winner_row": gain_ours.get("method") if gain_ours else None,
+        "gain_winner_gain_after": gain_ours.get("gain_after") if gain_ours else None,
+        "gain_winner_reliability_after": gain_ours.get("reliability_after") if gain_ours else None,
+        "gain_winner_ident_after": gain_ours.get("ident_after") if gain_ours else None,
         "ours_gain_after": ours.get("gain_after") if ours else None,
         "ours_reliability_after": ours.get("reliability_after") if ours else None,
         "ours_ident_after": ours.get("ident_after") if ours else None,
@@ -574,6 +613,10 @@ def _verdict(rows: list[dict[str, Any]], group: dict[str, Any] | None) -> dict[s
         "beat_brainsync_on_gain_after": beat.get("brainsync"),
         "beat_fugw_on_gain_after": beat.get("fugw"),
         "beat_conn_srm_on_gain_after": beat.get("conn_srm"),
+        "beat_noalign_on_reliability_after": beat_rel.get("noalign"),
+        "beat_brainsync_on_reliability_after": beat_rel.get("brainsync"),
+        "beat_fugw_on_reliability_after": beat_rel.get("fugw"),
+        "beat_conn_srm_on_reliability_after": beat_rel.get("conn_srm"),
         "sota_gain_after_positive_nondegenerate": sota_gain,
         "sota_beat_brainsync_fugw_noalign": beat_all,
         "group_neff_lt_S": group_pass,
@@ -629,6 +672,7 @@ def render_markdown(payload: dict[str, Any]) -> str:
         lines += [
             f"- n_subjects: {g.get('n_subjects')}",
             f"- n_eff (mean): {g.get('n_eff')} (min {g.get('n_eff_min')})",
+            f"- n_degenerate_nodes: {g.get('n_degenerate_nodes')}",
             f"- ci_ratio (reml/ttest): {g.get('ci_ratio')}",
             f"- mean_sigma2: {g.get('mean_sigma2')}",
             "",
@@ -643,11 +687,19 @@ def render_markdown(payload: dict[str, Any]) -> str:
         f"- beat BrainSync on gain_after: **{v.get('beat_brainsync_on_gain_after')}**",
         f"- beat FUGW on gain_after: **{v.get('beat_fugw_on_gain_after')}**",
         f"- beat conn_srm on gain_after (non-collapsed): **{v.get('beat_conn_srm_on_gain_after')}**",
+        f"- beat noalign on reliability_after: **{v.get('beat_noalign_on_reliability_after')}**",
+        f"- beat BrainSync on reliability_after: **{v.get('beat_brainsync_on_reliability_after')}**",
+        f"- beat FUGW on reliability_after: **{v.get('beat_fugw_on_reliability_after')}**",
+        f"- beat conn_srm on reliability_after (non-collapsed): **{v.get('beat_conn_srm_on_reliability_after')}**",
         f"- beat BrainSync+FUGW+noalign at non-collapsed rel/ident: **{v.get('sota_beat_brainsync_fugw_noalign')}**",
         f"- group n_eff < S: **{v.get('group_neff_lt_S')}**",
-        f"- best ours row: **{v.get('best_ours_row')}** "
-        f"(gain_after={v.get('ours_gain_after')}, reliability_after={v.get('ours_reliability_after')}, "
+        f"- best ours row (ranking metric = {v.get('best_ours_row_ranking_metric')}): **{v.get('best_ours_row')}** "
+        f"(reliability_after={v.get('ours_reliability_after')}, gain_after={v.get('ours_gain_after')}, "
         f"ident_after={v.get('ours_ident_after')}, collapsed={v.get('ours_collapsed')})",
+        f"- gain-maximal ours row: **{v.get('gain_winner_row')}** "
+        f"(gain_after={v.get('gain_winner_gain_after')}, "
+        f"reliability_after={v.get('gain_winner_reliability_after')}, "
+        f"ident_after={v.get('gain_winner_ident_after')})",
         f"- scientific transform iterations used: **{v.get('iterations_used')}** (max 2)",
         "",
         "### Notes",

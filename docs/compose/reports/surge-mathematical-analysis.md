@@ -525,3 +525,228 @@ Current method ≈ **OT-to-C_pop + orthogonal Procrustes**, with hierarchical qu
 | What to fix framing-wise | Separate gain-null vs posterior-width columns; disclose ceiling + tradeoff + faithfulness gap; do not claim Track A |
 
 **CRON directive honored**: the analysis diagnoses our method and evaluation framing. No baseline is weakened or excluded.
+
+---
+
+## Shrinkage as a spectral denoising filter — mechanism, controls, and why λ≈0.5 (2026-09-20)
+
+**Scope.** Real ds000243, N=83 two-run subjects, Schaefer-100, artifacts `runs/10_ours_full__9d7dab12__20260920T140613Z/artifacts`, transform mode `posterior_shrink` with `lambda_source=row_entropy` (λ_s = 1/(1+(H_s/ent0)²), ent0 = median posterior row-entropy of π̄_s). Refitting this path reproduces the harness numbers exactly — scan-rescan 0.6455→0.6975, ident 83/83=1.0, 500-pair gain −0.0349, λ_s ∈ [0.4865, 0.5138], mean 0.5001 — so every number below is computed from the same (Q_s, λ_s, C¹_s, C²_s) that produced `REAL_n83_gap_sota.json`. All scripts were throwaway (`/tmp/surge_filter/`); no repo file was modified.
+
+### 1. T_λ is a spectral filter on vec(C), with closed-form attenuation
+
+Stack C column-wise; R = Qᵀ⊗Qᵀ is orthogonal and
+
+    T_λ(C) = (1−λ) C + λ Qᵀ C Q    ⟺    M_λ = (1−λ) I + λ R ,
+    K := M_λᵀ M_λ = I − 2λ(1−λ) ( I − ½(R + Rᵀ) ).
+
+For a unit vector v with Rv = ρv (|ρ| = 1, ρ = e^{iθ} on the invariant 2-plane):
+
+    μ(θ) = (1−λ) + λ e^{iθ} ,   |μ(θ)|² = 1 − 2λ(1−λ)(1 − cos θ) ,   |μ(θ)|²|_{λ=1/2} = cos²(θ/2).   (★)
+
+Because R is orthogonal, K has the same eigenvectors as R with eigenvalues w(θ) = 1 − 2λ(1−λ)(1−cos θ): a filter that passes R-fixed components (θ = 0) at weight 1 and attenuates rotated components, with the deepest null at θ = π, w(π) = (2λ−1)². At λ = 1/2 the attenuation is cos²(θ/2).
+
+**Correlation identity (exact).** For feature vectors c = upper-triangle(C),
+
+    corr(M c₁, M c₂) = ⟨c₁, K c₂⟩ / √( ⟨c₁, K c₁⟩ ⟨c₂, K c₂⟩ ) ,   with  K = Mᵀ P M ,
+
+where P is the feature-space centering operator (the harness metric is mean-centred Pearson on the 4950 upper-triangle entries; P is the only reason K is not simply MᵀM). Verified over all 83 subjects: max |direct − formula| = 2.2e-16, mean 8.3e-17.
+
+### 2. Empirical attenuation spectrum of the real Q_s
+
+Q_s is a real orthogonal 100×100 map. On the 5050-dimensional symmetric subspace, R decomposes into 2550 invariant orbits: 50 one-dimensional fixed orbits (θ = 0, dim 50) and 2500 two-dimensional rotation orbits (2×2500), total 50 + 5000 = 5050 = dim Sym(100). Rotation structure verified directly: QᵀaQ = cos θ·a + sin θ·b on every orbit basis (max deviation 3.4e-15).
+
+At λ_s ≈ 0.5 the eigenvalue multiset of M_λ (counting multiplicities) is
+
+| |μ|² median | IQR | min | share < 0.5 | share < 0.9 | energy-weighted mean (1−cos θ) |
+|---|---|---|---|---|---|
+| λ_s (0.486–0.514) | 0.509 | [0.091, 0.931] | 4.4e-10 | 49.5% | 72.2% | 0.380 |
+
+So ~half of all symmetric-subspace directions are attenuated below 0.71× amplitude (|μ|² < 0.5), the θ ≈ π directions are annihilated, and ~28% (near-fixed) directions pass essentially untouched (|μ|² > 0.9). The energy-weighted mean amplitude factor is √(1 − ½·0.380) = 0.90.
+
+### 3. Why this raises scan-rescan correlation: the run-difference lives in the stopband
+
+Write c₁ = s + e, c₂ = s − e with s = (c₁+c₂)/2 (run-shared) and e = (c₁−c₂)/2 (run-difference). Exactly (verified to 3.3e-16):
+
+    corr(M c₁, M c₂) = ( ⟨s, K s⟩ − ⟨e, K e⟩ ) / √( (⟨s,Ks⟩ + ⟨e,Ke⟩)² − 4⟨s,Ke⟩² ) ,
+
+and since K = Σ_o w_o P_o over the R-orbits o (P_o = orthogonal projector),
+
+    ⟨s, K s⟩ = Σ_o w_o ‖P_o s‖² ,   ⟨e, K e⟩ = Σ_o w_o ‖P_o e‖² .
+
+Ignoring the small cross term, corr ≈ (1−r)/(1+r) with r = ⟨e,Ke⟩/⟨s,Ks⟩; the filter raises the correlation **iff it attenuates the run-difference more than the run-shared part**, i.e. iff w̄_e < w̄_s. That is exactly what the data shows (means over 83 subjects, λ = λ_s):
+
+| quantity | value |
+|---|---|
+| W_sig := Σ_o (1−cos θ_o)‖P_o s‖² / ‖s‖² | 0.3645 |
+| W_noise := Σ_o (1−cos θ_o)‖P_o e‖² / ‖e‖² | **0.4683** — larger for **83/83** subjects |
+| energy share in the exactly-fixed subspace (θ = 0): signal / noise / random-direction baseline (50/5050) | 21.8% / 6.5% / 0.99% |
+| raw cross-run corr within θ bands: θ=0 / (0,π/4] / (π/4,π/2] / (π/2,3π/4] / (3π/4,π] | 0.943 / 0.641 / 0.674 / 0.564 / 0.501 |
+| ⟨e,Ke⟩/⟨s,Ks⟩ at λ = 0.5 vs ‖e‖²/‖s‖² at λ = 0 | 0.1831 vs 0.2194 (−16.5% relative) |
+
+So the reproducible structure is 3.4× over-represented (relative to the run-difference) in the 1%-dimensional R-fixed subspace, and correlates at 0.94 there, while the run-difference energy spreads over the rotated directions that (★) attenuates. In words: T_λ keeps the part of each connectome that its own alignment map already leaves invariant, and suppresses the part the map rotates away — and the rotated part is where scan-to-scan instability sits. Supporting structure: the cohort-mean connectome carries 10.8% of its energy in the fixed subspace of an individual subject's map vs 0.99% for a random direction (≈ 11× concentration); the learned template C̄ = BBᵀ itself is not concentrated there (0.93%).
+
+### 4. Why λ ≈ 0.5 beats λ ≈ 0.89 — and why both endpoints are bad
+
+The whole filter depends on λ only through the scalar λ(1−λ): w(θ) = 1 − 2λ(1−λ)(1−cos θ). λ(1−λ) is maximal (= 1/4) at λ = 1/2, and equals 0.0979 at λ = 0.893 — a **2.55× smaller filter contrast**. Both endpoints have zero contrast: λ = 0 gives M = I (reliability exactly raw: 0.6455 = 0.6455), and λ = 1 gives the pure rotation, which is an isometry on feature space up to dropping the rotated diagonal (energy share 1.9e-4). Hence reliability is maximized strictly inside, and the measured curve is symmetric about 1/2 and tracks the noise/signal ratio r:
+
+| λ (fixed per-subject Q_s) | mean scan-rescan | Δ vs raw | ⟨e,Ke⟩/⟨s,Ks⟩ | ident | 500-pair gain |
+|---|---|---|---|---|---|
+| 0 | 0.6455 | 0.0000 | 0.2194 | 0.9157 | 0.0000 |
+| 0.25 | 0.6792 | +0.0337 | 0.1957 | 0.9398 | +0.0103 |
+| **0.50** | **0.6975** | **+0.0519** | **0.1831** | **1.0000** | −0.0349 |
+| 0.75 | 0.6781 | +0.0325 | 0.1952 | 1.0000 | −0.1236 |
+| 0.893 | 0.6583 | +0.0127 | 0.2085 | 1.0000 | −0.1664 |
+| 1 | 0.6430 | −0.0025 | 0.2192 | 1.0000 | −0.1913 |
+
+The λ = 0.50 row **is** the fitted configuration (per-subject λ_s ∈ [0.4865, 0.5138] gives 0.6975 / 1.0 / −0.0349, identical to the harness), and λ = 0.893 reproduces the τ-gated variant (0.6577 / −0.167). The sweep is a diagnostic, **not a tuned result**: nothing here selects λ on the reliability metric; the entropy rule λ_s = 1/(1+(H_s/ent0)²) lands at 0.500 ± 0.014 because the pooled posterior couplings are near-maximally entropic (H_s ≈ ent0) — it is a near-uniform-mixture rule, not a tuned constant.
+
+Two exactness caveats at the endpoints, stated because the naive statement "λ = 1 is a pure rotation so reliability equals raw" is only true in the uncentred metric: the uncentred cosine at λ = 1 is 0.64577 vs raw 0.64554 (deviation from dropping the rotated diagonal, energy share 1.9e-4), while the harness's **centred** Pearson gives 0.6430 (mean deviation −0.0026, max |per-subject deviation| 0.0256) because centering does not commute with the rotation.
+
+### 5. Null and artifact controls
+
+Analytically, independence kills the gain: if the two runs are independent (E[c₂] = 0 given c₁), then E[⟨c₁, Kc₂⟩] = 0 for every λ while the denominator is positive, so E[corr] = 0 — no linear map applied to both runs can manufacture shared signal. Numerically at λ = 0.5:
+
+| control (same map on both runs) | mean scan-rescan | Δ vs raw | paired bootstrap vs real (10k) |
+|---|---|---|---|
+| real per-subject (Q_s, λ_s) | 0.6975 | +0.0519 | — |
+| random Haar Q_s per subject | 0.6456 | +0.0001 | +0.0518 [0.0478, 0.0558] |
+| permuted Q (subject π(s)'s fitted map applied to s) | 0.6722 | +0.0267 | +0.0253 [0.0207, 0.0298] |
+
+Interpretation, stated exactly: the boost is **not** a generic orthogonal-mixing artifact (a Haar-random map gives literally zero, +0.0001), but it is **not purely subject-specific** either — applying another subject's fitted map retains ~51% of the boost. The reason is visible in the maps: the fitted maps are mutually similar (mean |tr(QᵢᵀQⱼ)|/n = 0.251 across subject pairs vs 0.008 ± 0.006 for Haar; permuted pairs 0.243), because every Q_s is a Procrustes map onto the same learned template. So roughly half the effect requires the subject's own map; the other half is carried by the shared population-gauge component of the maps. A strict "boost vanishes under permutation" claim is **false on this data** and must not be made.
+
+### 6. Why within-subject reproducibility rises while cross-subject gain falls — and what conn_srm actually does
+
+The metrics mean different things. Scan-rescan reliability and identification are **within-subject reproducibility**: they compare T(C_s^run1) with T(C_s^run2), or with a gallery whose diagonal entry is the same subject. The shrinkage is a per-subject projection toward the subject's own R-fixed subspace; applied identically to both runs it removes the run-difference directions (§3), so the diagonal improves and identification saturates at 1.0. Cross-subject gain compares T(C_i^run1) with T(C_j^run2), i ≠ j: it rewards making *different* subjects' connectomes similar, which a subject-specific projection cannot do — it can only reduce the overlap of the common component across subjects, because each subject is projected onto a different 1%-dimensional subspace. Measured monotonicity: gain = 0.0000 (λ = 0), +0.0103 (0.25), −0.0349 (0.50), −0.1236 (0.75), −0.1664 (0.893), −0.1913 (λ = 1). The reliability gain and the negative cross-subject gain are two readings of the same projection strength; the trade is already visible at λ = 0.25 (gain still slightly positive, +0.0103, with reliability +0.0337).
+
+conn_srm is the degenerate opposite: one shared map/template for all subjects raises cross-subject similarity (gain +0.386) precisely by collapsing individuals onto a common point — identification falls to 0.024 (2/83, at/below the 1/83 chance rate) while reliability *rises* to 0.8453 (identical transformed connectomes correlate trivially). Positive gain with ident ≈ 0 is information destruction, not alignment: nothing about a subject survives its transform.
+
+### 7. Statistical validity of the claim
+
+**Design.** Per-subject deltas Δ_s = r_s(ours) − r_s(baseline) over the 83 subjects; a paired bootstrap resamples *subjects* with replacement 10k times and reports the percentile CI of the mean. Pairing removes between-subject variance (subject difficulty), so the CI is a population claim about the mean within-subject reliability difference for subjects drawn from this distribution (ds000243, Schaefer-100, this preprocessing, two rest runs per subject). **What it supports:** the same-map shrinkage transform raises scan-rescan reliability by +0.052 [0.048, 0.056] over raw and by +0.025 [0.021, 0.030] over the strongest null that shares its filter structure (the permuted-map control) — i.e. the gain is neither a mixing artifact nor an artifact of the fitting protocol, since Q_s and λ_s are fit on run 1 only and applied unchanged to run 2.
+
+**Limits.** (i) Subjects are the only resampling unit — runs, sessions and sites are not resampled, so no scanner/site generalization is tested. (ii) The population template and posterior artifacts were learned on this same cohort, so the claim is in-cohort and same-dataset — no cross-dataset or out-of-sample-subject generalization. (iii) ent0 is a cohort median (median posterior row-entropy), so λ_s carries a weak cohort-level coupling. (iv) The transform mode and the entropy λ rule were selected among several variants on this data, so the CI is conditional on that selection (no multiplicity correction). (v) Reliability/identification are not accuracy of the map: no ground-truth alignment exists in rest fMRI. (vi) The metric is a Pearson correlation of upper-triangle features, not a distance or error norm.
+
+### 8. What this does NOT show
+
+- **Not a tuning result.** λ ≈ 0.5 is the maximally-filtering interior point of the *entropy* rule; the λ sweep is a diagnostic on fixed Q_s. It does not show that λ = 0.5 would be optimal on another dataset, parcellation or preprocessing.
+- **Not pure subject-specific alignment.** ~Half the boost survives applying another subject's fitted map (0.6722 vs 0.6975). The effect requires *template-aligned* maps (Haar-random maps give 0.0001) and is carried partly by population-gauge structure shared by all fitted maps.
+- **Not a ground-truth denoising claim.** s = (C¹+C²)/2 and e = (C¹−C²)/2 are proxies; the "noise" component also contains genuine run-specific neural-state differences, and the "fixed subspace" is defined by the subject's own fitted Q_s, not by an oracle.
+- **Not a white-noise or universality claim.** Nothing here shows the noise is white/Gaussian, or that the variance decomposition (W_noise > W_sig) transfers to other datasets, parcellations or preprocessing pipelines.
+- **Not scientific validity.** Higher scan-rescan correlation does not imply better behavioural prediction, better fingerprints for downstream tasks, or correctness of the alignment — only reproducibility of the measured connectome under re-scan.
+- **Not free.** The reliability gain costs −0.035 cross-subject 500-pair gain at λ = 0.5 (and −0.17 to −0.19 at λ ≥ 0.89), monotone in λ.
+- **Not multiplicity-corrected.** The CI is conditional on the artifact fit and the transform-mode selection.
+- **Not "λ = 1 equals raw" in the harness metric.** That identity holds for the uncentred cosine (0.64577 vs 0.64554); under the harness's centred Pearson, λ = 1 gives 0.6430 (max per-subject deviation 0.0256) because centering and the rotation do not commute.
+
+---
+
+## Addendum (independent replication, 2026-09-20): identification under the same-map protocol is invariant to *any* per-subject map — a protocol artifact — plus the common-map control
+
+**Why this addendum.** An independent run of the same numerical programme (separate throwaway scripts in `/tmp/surge-mech/`, same artifacts `runs/10_ours_full__9d7dab12__20260920T140613Z/artifacts`, cohort `results/tables/freeze_n83/frozen_cohort_n83.txt`, β = 28.438323293411973, path `posterior_shrink_tau_gated`, `lambda_source=row_entropy`) reproduces the section above and adds two decisive controls it does not contain: (i) **identification** under wrong maps, and (ii) a **common-map** control that sharpens the "~half survives permutation" reading. Nothing in the section above is retracted; small numerical differences (permuted 0.6708 vs 0.6722, Haar 0.6454 vs 0.6456) are permutation/seed draws of the same controls.
+
+**Exact reproduction of the frozen headline.** λ̄ = 0.500132 (0.486499–0.513822), scan-rescan 0.645523 → 0.697453 (Δ +0.051930), ident 83/83 = 1.000, 500-pair gain −0.034874, `same_Q_both_runs = true`. Identical to `REAL_n83_gap_sota.json`.
+
+### A1. Derivation cross-checks (machine precision)
+
+Vectorise with `c = vec(C)` and `M_λ = (1−λ)I + λR`, `R = Qᵀ⊗Qᵀ` orthogonal:
+
+    corr(M c₁, M c₂) = ⟨c₁, K c₂⟩ / √(⟨c₁,Kc₁⟩⟨c₂,Kc₂⟩),   K = Mᵀ M = (1−2λ(1−λ))I + λ(1−λ)(R + Rᵀ)
+      (exact for pre-centred c₁, c₂ — centring applied before the map; the harness centres *after*
+       the map, so strictly K = MᵀPM and the K = MᵀM prediction tracks it to ≤ 0.009, see table)
+    M_λ X_ij = g(θ_ij) X_ij,  X_ij = conj(v_i) v_jᵀ,  θ_ij = φ_i − φ_j (Q v_i = e^{iφ_i} v_i)
+    g(θ) = (1−λ) + λ e^{iθ},  |g(θ)|² = 1 − 2λ(1−λ)(1−cos θ),  |g(θ)|²|_{λ=1/2} = cos²(θ/2)
+
+| check | result |
+|---|---|
+| mode eigenvalue g(θ_ij) on random (i,j), 5 subjects × 12 modes × λ∈{0.5, 0.89} | max rel. error **6.0e-15** |
+| uncentred cosine identity ⟨Mx,My⟩ = ⟨x,Ky⟩ | max abs. error **1.1e-16** |
+| K-prediction vs harness centred Pearson, all 83 subjects | max abs. diff **0.0090** (readout + post-transform centring; the harness centres *after* the map, so K = MᵀPM strictly) |
+| λ = 0 vs raw, harness metric | max abs. diff **0.0** (exact) |
+| λ = 1 uncentred cosine invariance (R orthogonal) | max abs. error **6.7e-16**; centred Pearson shifts mean −0.00255 (max 0.0256) because R does **not** fix the all-ones direction: ‖QᵀJQ − J‖/‖J‖ ≈ 1.20, mean(vec C) shifts by 0.042 vs data RMS 0.314 |
+
+**Attenuation table |g|² (exact, from the formula and confirmed against mode application):**
+
+| θ/π | 0 | 1/8 | 1/4 | 1/2 | 3/4 | 7/8 | 1 |
+|---|---|---|---|---|---|---|---|
+| λ = 0.5 | 1.000 | 0.9619 | 0.8536 | 0.5000 | 0.1464 | 0.0381 | **0.0000** |
+| λ = 0.89 | 1.000 | 0.9851 | 0.9427 | 0.8042 | 0.6657 | 0.6233 | 0.6084 |
+
+**Energy attribution** (83 subjects; pre-centred matrices `C − mean(C)·I`, which is *conservative*: it removes energy from the θ = 0 fixed mode, weakening the asymmetry). Per-mode energy: `|W_ii|²` (θ = 0) and `2|W_ij|²` for i<j, `W = Vᴴ C V`, `Σ E = ‖C‖_F²`.
+
+| quantity (mean over 83 subjects, λ = λ_s) | value |
+|---|---|
+| energy-weighted attenuation of shared s = (c₁+c₂)/2, ā_s | **0.6348** |
+| energy-weighted attenuation of difference d = c₁−c₂, ā_d | **0.5245** |
+| ā_s − ā_d (positive for **83/83** subjects) | **+0.1103** |
+| Pearson r(ā_s − ā_d, per-subject Δcorr) | **0.883** |
+| fraction of ‖d‖² in attenuation quartiles Q1…Q4 (low→high a) | 0.1851 / 0.2958 / 0.3288 / **0.1903** |
+| fraction of ‖s‖² in the same quartiles | 0.1174 / 0.2277 / 0.3561 / **0.2989** |
+| energy-weighted \|θ\| quantiles (p25/p50/p75) shared vs difference | 0.346 / 1.068 / 1.917 vs 0.693 / 1.473 / 2.312 rad |
+
+Per-subject examples (subjects 015/016/017): λ = 0.4956/0.4973/0.5104, corr 0.6148→0.6676 / 0.6795→0.7374 / 0.6484→0.6818, ā_d = 0.5039/0.5652/0.5366, ā_s = 0.6034/0.6746/0.6074. So the run-difference is 18.5% in the most-attenuated quartile vs 11.7% of the shared part, and the shared part is 29.9% in the passband vs 19.0% of the difference — shared (subject-stable) structure sits in the near-fixed directions, run-specific noise spreads over rotated directions, and the filter raises corr because ΣaEˢ/ΣaEᵈ > ΣEˢ/ΣEᵈ. Q_s is a substantial rotation, not a near-identity map: mean |eigen-angle| 1.444 rad, 46.6% of angles > π/2, cross-subject map distance 0.868 (normalised Frobenius).
+
+### A2. λ sweep with fixed real Q_s (diagnostic only — NOT a tuned result)
+
+| λ | 0 | 0.1 | 0.2 | 0.3 | 0.4 | **0.5** | 0.6 | 0.7 | 0.8 | 0.9 | 1.0 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| mean scan-rescan | 0.6455 | 0.6589 | 0.6726 | 0.6852 | 0.6942 | **0.6975** | 0.6939 | 0.6843 | 0.6712 | 0.6568 | 0.6430 |
+| Δ vs raw | 0.0000 | +0.0133 | +0.0271 | +0.0397 | +0.0487 | **+0.0519** | +0.0483 | +0.0388 | +0.0257 | +0.0113 | −0.0025 |
+
+**argmax λ = 0.50.** The entropy rule λ_s = 1/(1+(H_s/ent0)²) lands at 0.5001 without any tuning; λ = 1/2 is also the maximally-filtering interior point (a(θ,λ) = 1 − 2λ(1−λ)(1−cos θ) minimised at λ = 1/2 for every θ ≠ 0) and the only λ that annihilates θ = π. The sweep is a diagnostic on fixed Q_s; it is not used to select λ.
+
+### A3. Null controls at λ = 0.5 — reliability
+
+| map family (same map on both runs) | mean scan-rescan | Δ vs raw | ident |
+|---|---|---|---|
+| raw / identity Q | 0.64552 | 0.0000 | 0.9157 |
+| per-subject Haar Q (5 draws) | 0.64538 ± 0.00028 | −0.0001 | **1.0000** |
+| single common Haar Q for all subjects | 0.64673 | +0.0012 | 0.9036 |
+| permuted fitted Q (20 derangements) | 0.67079 ± 0.00077 | +0.0253 | **1.0000** |
+| one subject's fitted Q for all (Q₀) | 0.67382 | +0.0283 | — |
+| **common Procrustes-mean map Q̄ = polar(Σ_s Q_s)** | **0.69190** | **+0.0464** | 0.9036 |
+| fitted per-subject Q_s | 0.69746 | +0.0519 | **1.0000** |
+
+At the fitted λ the same ordering holds: Haar 0.64573 ± 0.00014, permuted 0.67138 ± 0.00071, fitted 0.69745. Reading: (i) generic orthogonal mixing does nothing (Haar ≈ raw, Δ ≤ 0.001) — the gain is **not** generic smoothing; (ii) correct subject–map pairing is worth +0.0267 over permutation; but (iii) a **single common template-directed map recovers +0.0464 of the +0.0519 (89%)**, leaving only +0.0056 for subject-specific matching. The reliability mechanism is therefore "template-directed rotation + shrinkage"; it does **not** require per-subject maps. (Consistent with the sibling section's "~half survives permutation": permutation applies *mismatched* per-subject maps, which is worse than one well-matched common map.)
+
+### A4. DECISIVE control — identification is invariant to any per-subject map
+
+Same harness (`trajot.eval.identification.identification_accuracy`, Pearson, same-Q protocol), λ = λ_s:
+
+| map | ident | mean diagonal score | mean off-diagonal score |
+|---|---|---|---|
+| identity Q (= noalign) | 0.9157 | 0.6455 | 0.4406 |
+| common Q̄ | 0.9036 | 0.6919 | 0.5124 |
+| common Haar Q | 0.9036 | 0.6467 | 0.4422 |
+| per-subject Haar Q | **1.0000** | 0.6452 | 0.2235 |
+| permuted fitted Q (20/20 draws) | **1.0000** | 0.6702 | 0.3219 |
+| fitted per-subject Q_s | **1.0000** | 0.6975 | 0.4052 |
+| cross-map diagnostic: run-1 with Q_s, run-2 with Q_{π(s)} | 0.3494 | — | — |
+
+**Interpretation rule applied (pre-registered in the request): permuted-Q ident stays 1.0 ⇒ the boost is a protocol artifact and MUST be stated as such.** The diagonal score corr(T_s(C¹_s), T_s(C²_s)) is invariant to *any* per-subject invertible map (it equals the raw within-subject correlation up to centring); the 0.9157 → 1.0 jump is produced entirely by suppression of the off-diagonal (cross-subject) scores — 0.4406 → 0.2235 with Haar maps, which give *no* reliability gain at all. Therefore `ident = 83/83` under this protocol cannot be reported as "alignment improves identification"; it must be reported as **"identity preserved / no collapse"** (in contrast to conn_srm at 0.024), because a random per-subject rotation scores the same 1.0. The comparison ours 1.0 vs baselines 0.90–0.92 is confounded by map diversity across subjects and needs a common-map-normalised ident variant before any identification claim is made. The cross-map row shows what happens once the same-Q invariance is broken (0.3494).
+
+### A5. Statistical validity (design + exact numbers)
+
+**Design.** Paired bootstrap **over subjects** (resampling unit = subject, N = 83, 10k resamples) of the per-subject deltas Δ_s = r_s(ours) − r_s(baseline) for reliability and of the ident delta on jointly resampled query/gallery score submatrices; percentile 95% CIs. McNemar **exact** two-sided binomial on discordant identification pairs. Pairing removes between-subject variance.
+
+| comparison (N = 83, entropy-λ) | Δrel [95% CI] | Δident | McNemar b/c | p |
+|---|---|---|---|---|
+| vs noalign | +0.0519 [0.0480, 0.0558] | +0.0843 | 7 / 0 | 0.015625 |
+| vs BrainSync | +0.0513 [0.0472, 0.0552] | +0.0964 | 8 / 0 | 0.0078125 |
+| vs FUGW | +0.0759 [0.0705, 0.0814] | +0.0964 | 8 / 0 | 0.0078125 |
+
+N = 49 replication (β = 29.189, `REAL_sota_stats.json`): reliability 0.642 → 0.685, Δrel +0.0434 [0.0379, 0.0490] vs noalign, +0.0425 [0.0366, 0.0486] vs BrainSync, +0.0648 [0.0576, 0.0722] vs FUGW — all exclude 0. Δident at N = 49 is +0.0204 / +0.0204 / +0.0612 with McNemar p = 1.0 / 1.0 / 0.25 — **not significant**, which is exactly what the A4 artifact analysis predicts: the ident effect is not a stable scientific signal.
+
+**Population claim supported.** Within ds000243 two-run rest (Schaefer-100, this preprocessing), the entropy-gated same-map shrinkage transform raises scan-rescan reliability over raw, BrainSync and FUGW; the identification number is a harness property (A4) and only supports "no identity collapse".
+
+**Limits.** (i) Q_s and λ_s are fit on run 1 and applied unchanged to both runs — a *same-map protocol*; there is no held-out reference and no re-fit on run 2. (ii) Under this protocol the ident metric is invariant to any per-subject map (A4) — ident CIs must not be read as evidence of alignment quality. (iii) Subjects are the only resampling unit; no site/scanner/session generalisation. (iv) Template and posterior artifacts were learned on this cohort: in-cohort, same-dataset claim only; no cross-dataset generalisation. (v) ent0 is a cohort median, so λ_s carries weak cohort-level information; the transform mode and λ rule were selected among variants on this data (no multiplicity correction). (vi) Coverage/calibration on real rest is **not** claimed (synthetic coverage@0.9 and AUROC-τ fail). (vii) The metric is Pearson correlation of upper-triangle features, not an error norm or a ground-truth alignment score.
+
+### A6. What this addendum does NOT show
+
+- **Does not show alignment improves identification.** Permuted and Haar per-subject maps also score 83/83; the 1.0 is protocol-induced (A4). Only "no identity collapse" is supported.
+- **Does not show the reliability gain requires subject-specific maps.** A single common Procrustes-mean map Q̄ recovers +0.0464 of +0.0519 (89%); per-subject matching adds +0.0056.
+- **Does not show generic smoothing works.** Haar-random maps (per-subject or common) give Δrel ≤ +0.0012.
+- **Does not show the maps are scientifically correct.** No ground-truth alignment exists on real rest data; Q̄ is derived from the same fitted maps, so "common map" is not an independent estimator.
+- **Does not claim cross-subject gain improves** — it is −0.0349 at λ = 0.5 by construction of the template-directed pull (and monotonically worse for larger λ).
+- **Does not claim generalisation** beyond ds000243 / N = 83 (N = 49 replication) / this parcellation / this preprocessing / the same-map protocol, and does not claim calibrated uncertainty or coverage.
+- **Does not claim exactness of the K-identity for the harness metric** (max 0.009) nor exact centred-correlation invariance at λ = 1 (mean −0.0026, max 0.0256; the all-ones direction is not preserved by R).
+
+**Reproduce.** Throwaway scripts `/tmp/surge-mech/{01_fit_and_cache,02_mechanism,03_controls,04_final_controls}.py`; outputs `cache_n83.npz`, `mech_results.json`, `controls_results.json`, `final_controls.json`. Repo files were read-only; no repo file was modified or committed.
