@@ -1,0 +1,27 @@
+# Pilot evaluation config: same experiment, reduced permutations for iteration.
+experiment: 00_noalign_pilot
+includes:
+  model: ../model/default.yaml
+  eval: ../eval/default.yaml
+preprocess:
+  slice_order: interleaved_odd_first
+  bandpass:
+    low: 0.01
+    high: 0.1
+    order: 2
+  gsr: true
+  surface: fsaverage4
+  n_regions: 100
+  qc:
+    max_mean_fd_mm: 0.5
+    min_mask_dice: 0.75
+run:
+  seed: 0
+  n_jobs: 1
+  debug: true
+eval:
+  pairs:
+    n: 500
+    seed: 2026
+  permutations:
+    B: 200

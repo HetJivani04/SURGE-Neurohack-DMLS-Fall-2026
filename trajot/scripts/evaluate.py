@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -399,13 +400,25 @@ def _load_timeseries(root: Path, subjects: list[str]) -> dict[str, np.ndarray] |
         return None
 
 
+def _synthetic_sandbox_root(cfg: Config) -> Path:
+    """Isolated root for synthetic contract data.
+
+    Synthetic runs must never write into the real ``data_root`` derivatives tree: that
+    overwrites ``manifest.parquet`` and contaminates real subject npz.
+    """
+    override = os.environ.get("TRAJOT_SYNTHETIC_ROOT")
+    if override:
+        return Path(override)
+    return Path(cfg.data_root) / "derivatives" / "trajot_synthetic"
+
+
 def _synthetic_via_contract(cfg: Config, *, seed: int) -> tuple[np.ndarray, np.ndarray, list[str], Any] | None:
-    """Write contract-exact synthetic npz under cfg.data_root and load through the real IO path."""
+    """Write contract-exact synthetic npz in an isolated sandbox and load through the real IO path."""
     try:
         from trajot.inference.synthetic import make_synthetic_npz
     except ImportError:
         return None
-    root = Path(cfg.data_root)
+    root = _synthetic_sandbox_root(cfg)
     try:
         make_synthetic_npz(
             root,
