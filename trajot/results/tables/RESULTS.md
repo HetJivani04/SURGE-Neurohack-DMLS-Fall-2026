@@ -1,60 +1,48 @@
-# SURGE Neurohack 2026 - TrajOT Results
+# Phase 2 primary comparison table (staging copy)
 
-## Executive Summary
+Canonical write-up: `trajot/reports/RESULTS.md`.
+CLI table: `python scripts/compare.py --experiments all --out reports/results_table.md` → also `results/tables/results_table.md`.
 
-TrajOT (hierarchical population-of-couplings) does NOT beat baselines on Track A identification accuracy. The defensible contribution is calibrated posterior uncertainty (tau_phi) + positive alignment gain without ident collapse + non-identifiability reporting.
+## Frozen pilot — honest summary
 
-## Primary Comparison (N=49, frozen root, same data_hash, B=200)
+- **Status:** Phase 2 pilot frozen. ds000243, Schaefer-100 (R=100), beta=29.189 (real scan-rescan), N=49 primary cohort, pairs=500 seed=2026, B=200 (pilot; paper target B=10000 / N=83).
+- **Track A:** raw connectomes identify at 0.94–0.96 — ceiling. `ours_full` **does not win** (0.857 vs noalign/brainsync 0.959).
+- **Track B (guaranteed):** only ours emits `per_pair_uncertainty` (`tau_phi` 0.075 full / 0.103 ablated). Baselines silent.
+- **Trade-off:** only ours has positive `alignment_gain` without identity collapse (+0.018; conn_srm +0.395 collapses ID to 0.082; FUGW −0.005).
 
-| Method | N | Ident | Gain | NonIdent | feat_corr | tau_phi |
-|--------|---|-------|------|----------|-----------|---------|
-| noalign | 49 | **0.959** | 0.000 | 500 | 1.000 | - |
-| brainsync | 49 | **0.959** | -0.000 | 469 | 0.998 | - |
-| fugw | 49 | 0.918 | -0.005 | 466 | 0.966 | - |
-| conn_srm | 49 | 0.082 | **+0.395** | 467 | 0.586 | - |
-| ours_full | 49 | 0.857 | +0.018 | 472 | 0.658 | **0.075** |
+## 6×5 table (compare.py)
 
-## Track A - Identification Accuracy
+| Method | Identification acc. | vs null (p) | Per-pair uncertainty | Non-identifiable pairs flagged |
+|---|---|---|---|---|
+| No alignment | 0.96 [0.90, 1.00] | 0.0050 | — | — |
+| BrainSync | 0.96 [0.90, 1.00] | 0.0050 | — | — |
+| FUGW | 0.92 [0.84, 0.98] | 0.0050 | — | — |
+| connectivity-SRM | 0.08 [0.02, 0.16] | 0.0199 | — | — |
+| **Ours (ablated)** | 0.85 [0.73, 0.97] | 0.0050 | 0.103 | 472 |
+| **Ours (full)** | 0.86 [0.76, 0.94] | 0.0050 | 0.075 | 472 |
 
-**Winner: noalign/brainsync (0.959)**
+beta: 29.189086229914952 · pairs: 500 · seed: 2026 · B: 200 · folds: without replacement
 
-TrajOT: 0.857 (does NOT win)
+## Source runs
 
-Root cause: Barycentric projection toward template reduces between-subject variance needed for identification. Raw Schaefer-100 connectomes already achieve ident=0.94-0.96 (ceiling effect).
+| Method | run_id | N | ident | gain | tau_phi | data_hash |
+|---|---|---|---|---|---|---|
+| noalign | `00_noalign__eebd2f8e__20260920T074351Z` | 49 | 0.959 | 0.0 | — | `ccce8212b978` |
+| brainsync | `01_brainsync__b4f31914__20260920T074433Z` | 49 | 0.959 | ≈0 | — | `ccce8212b978` |
+| fugw | `02_fugw__cf2f95f4__20260920T074534Z` | 49 | 0.918 | −0.005 | — | `ccce8212b978` |
+| conn_srm | `03_conn_srm__0777ce05__20260920T074652Z` | 49 | 0.082 | +0.395 | — | `ccce8212b978` |
+| ours_full | `10_ours_full__dd67ab1e__20260920T074747Z` | 49 | 0.857 | +0.018 | 0.075 | `ccce8212b978` |
+| ours_ablated | `11_ours_ablated__56a17400__20260920T071555Z` | **33** | 0.848 | +0.010 | 0.103 | different cohort freeze |
 
-## Track B - Alignment Gain
+**Ablated N note:** N=49 `ours_ablated` training had not finished at freeze time; the completed gauge-off run is N=33. Do not invent an N=49 ablated cell.
 
-**Winner: conn_srm (+0.395) but ident collapses to 0.082**
+**nonident caveat:** at pilot B=200 the gain-null is often degenerate, so counts near 500 are an artifact, not a scientific non-identifiability rate.
 
-TrajOT: +0.018 (best positive gain without ident collapse)
-fugw: -0.005 (negative)
-noalign/brainsync: 0.0
+## Files
 
-## Unique Contribution
-
-- per_pair_uncertainty (tau_phi=0.075) - only TrajOT produces this
-- Matches PLAN.md Section 7.5 guaranteed result: count non-identifiable pairs
-- Gauge ablation: null on transform metrics, only moves tau_phi (0.075 -> 0.103)
-
-## Mathematical Analysis
-
-See docs/compose/reports/surge-mathematical-analysis.md for full diagnosis.
-
-Key finding: Track A (identification) requires BETWEEN-subject differences. Track B (gain) requires WITHIN-subject commonality. These are mathematically opposed - any alignment that raises cross-subject correlation necessarily reduces identifiability.
-
-## Code Fixes Landed
-
-- compare.py CLI bugs fixed (dual-mode --runs, --quiet flag)
-- ALLOWED_METHOD_KEYS import fixed
-- K=100 configs for ours (matches n_regions)
-- evaluate.py diagnostics contract (identity_fallback status, transforms_applied, transform_diagnostics)
-- run_experiment.py fit_error persistence
-- Pushed as commit 24bff67
-
-## Test Results
-
-114 passed / 0 failed
-
-## Conclusion
-
-TrajOT's defensible claim is calibrated uncertainty reporting + positive gain without ident collapse, not superior fingerprinting. This matches PLAN.md's stated guaranteed result (Section 7.5).
+- `comparison_pilot_primary.csv` — N=49 same-data_hash rows
+- `comparison_pilot_latest.csv` — latest snapshot
+- `comparison_pilot.csv` — historical multi-N log (do not mix rows across data_hash)
+- `results_table.md` — compare.py markdown output
+- `FROZEN_PILOT.md` / `FROZEN_COHORT.md` — freeze notes (24-subject pilot cohort note; primary comparison is N=49)
+- `FROZEN_N49.md` — N=49 freeze metadata pointer

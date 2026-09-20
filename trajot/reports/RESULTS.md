@@ -1,180 +1,142 @@
 # Results: a hierarchical population of couplings for rest-fMRI alignment
 
-**Status: development phase. This document reports no result yet.**
+**Status: Phase 2 pilot frozen N=49, ds000243, Schaefer-100, beta = 29.189 (real scan-rescan, R = 100). This document reports what the frozen comparison actually produced. It does not invent wins.**
 
-The framework (W0 to W4) is built and unit-tested on synthetic data with known ground truth. Running it on
-ds000243 to produce the identification accuracies, permutation p-values, non-identifiability counts, figures
-and tables is the experiment phase, a separate set of issues opened after W0 to W4 are complete and their tests
-pass. So every result cell below is empty on purpose, and no sentence in this document is a finding. Each
-section says what will be reported, which command fills it, and which run it will trace to.
+Production protocol (PLAN §7.4) declares 500 ordered pairs, draw seed 2026, and **10,000 permutations**. The frozen pilot ran **B = 200** (debug-scale; the smallest attainable p-value is 1/201 ≈ 0.005). Every p-value below is therefore a pilot p-value. Chance at N=49 is 1/49 ≈ 0.020.
 
-On the machine this was written on (2026-09-20), `runs/index.csv` holds one preprocessing run and one
-synthetic-data fit whose `metrics.json` has no methods in it. No comparison run exists, so the table has six
-missing rows. A negative or empty outcome is stated as such, not filled in.
+The results table is produced by:
+
+```bash
+cd trajot
+python scripts/compare.py --experiments all --out reports/results_table.md
+```
+
+which reads only `runs/index.csv` and each selected run's `metrics.json`. A copy is also written to `results/tables/results_table.md`. Unfilled baseline cells are em-dashes (`—`), never `0`.
 
 ## 1. The results table
 
-Produced by `python scripts/compare.py --experiments all --out reports/results_table.md`, which reads only
-`runs/index.csv` and each selected run's `metrics.json`. Six rows, five columns, always. The two right-hand
-columns are quantities no baseline produces, so they are empty (`—`) for every baseline row, never `0`. A row
-whose run is missing carries a `(missing)` marker instead of being dropped.
+The six-row five-column table below is **exactly what `compare.py` rendered** at freeze time (`trajot/reports/results_table.md`). The two right-hand columns are quantities no baseline produces.
 
 | Method | Identification acc. | vs null (p) | Per-pair uncertainty | Non-identifiable pairs flagged |
 |---|---|---|---|---|
-| No alignment (missing) | — | — | — | — |
-| BrainSync (missing) | — | — | — | — |
-| FUGW (missing) | — | — | — | — |
-| connectivity-SRM (missing) | — | — | — | — |
-| Ours (ablated) (missing) | — | — | — | — |
-| Ours (full) (missing) | — | — | — | — |
+| No alignment | 0.96 [0.90, 1.00] | 0.0050 | — | — |
+| BrainSync | 0.96 [0.90, 1.00] | 0.0050 | — | — |
+| FUGW | 0.92 [0.84, 0.98] | 0.0050 | — | — |
+| connectivity-SRM | 0.08 [0.02, 0.16] | 0.0199 | — | — |
+| **Ours (ablated)** | 0.85 [0.73, 0.97] | 0.0050 | 0.103 | 472 |
+| **Ours (full)** | 0.86 [0.76, 0.94] | 0.0050 | 0.075 | 472 |
 
-- Declared pair subsample: not declared (no run in this table)
-- Draw procedure: ordered pairs (a, b) of distinct subjects drawn with replacement by numpy.random.default_rng(seed) (trajot.eval.folds.sample_pairs)
+- Declared pair subsample: 500 ordered subject pairs, seed 2026
+- Draw procedure: ordered pairs (a, b) of distinct subjects drawn without replacement via numpy.random.default_rng(seed).choice over lexicographic ordered pairs (default_rng.choice without replacement over lexicographic pair index; trajot.eval.folds.sample_pairs / make_folds)
 - Fold scheme: two-run identification: each subject's run 1 is the query against the gallery of run 2 and vice versa, both folds holding the same sorted subject list (trajot.eval.folds.make_two_run_splits)
-- beta: not reported (no model run in this table)
+- beta: 29.189086229914952
 
 Source runs:
-- No alignment: (missing)
-- BrainSync: (missing)
-- FUGW: (missing)
-- connectivity-SRM: (missing)
-- Ours (ablated): (missing)
-- Ours (full): (missing)
+- No alignment: 00_noalign__eebd2f8e__20260920T074351Z
+- BrainSync: 01_brainsync__b4f31914__20260920T074433Z
+- FUGW: 02_fugw__cf2f95f4__20260920T074534Z
+- connectivity-SRM: 03_conn_srm__0777ce05__20260920T074652Z
+- Ours (ablated): 11_ours_ablated__56a17400__20260920T071555Z
+- Ours (full): 10_ours_full__dd67ab1e__20260920T074747Z
+
+### Diagnostic tradeoff table (alignment_gain + transform)
+
+Same runs, additional columns that make the Track A / Track B tension visible. Baseline uncertainty cells stay `—`. The ablated row is the **completed** run at **N=33** (see caveat); all other rows are N=49 on frozen data_hash `ccce8212b978`.
+
+| Method | N | ID acc | alignment_gain | per_pair_uncertainty | feat_corr | run_id |
+|---|---|---|---|---|---|---|
+| noalign | 49 | **0.959** | 0.000 | — | 1.000 | 00_noalign__eebd2f8e__20260920T074351Z |
+| brainsync | 49 | **0.959** | −0.00005 | — | 0.998 | 01_brainsync__b4f31914__20260920T074433Z |
+| fugw | 49 | 0.918 | −0.005 | — | 0.966 | 02_fugw__cf2f95f4__20260920T074534Z |
+| conn_srm | 49 | 0.082 | **+0.395** | — | 0.586 | 03_conn_srm__0777ce05__20260920T074652Z |
+| ours_ablated | 33† | 0.848 | +0.010 | **0.103** | 0.667 | 11_ours_ablated__56a17400__20260920T071555Z |
+| ours_full | 49 | 0.857 | +0.018 | **0.075** | 0.658 | 10_ours_full__dd67ab1e__20260920T074747Z |
+
+† No completed N=49 `ours_ablated` `metrics.json` existed at freeze time (`11_ours_ablated__70a81655__*` and `2455c6a6__*` logs show training started, K=100, gauge off, no finished metrics). The ablated row is therefore the latest successful ablated run (N=33). Do not read it as an N=49 estimate.
+
+Cohort metadata: N=49 two-run subjects 015–063 from frozen root `frozen_ds000243`; beta 29.189 frozen for all methods; pairs=500 seed=2026; B=200 pilot (not 10,000). `ours_full` transform is a real region-level map (K=100): OT coupling to C_pop then orthogonal Procrustes; `transforms_applied=true`, max|aligned−raw| ≈ 2.58.
 
 ### Declared subsample
 
-The protocol declares the subsample before any run: 500 ordered subject pairs, draw seed 2026, and 10,000
-permutations (`configs/eval/default.yaml`). A run that does not declare `n_pairs`, `pairs_seed` and
-`permutations_B` is rejected by the `metrics.json` validator, and `compare.py` refuses to put runs that declare
-different subsamples in one table. The values shown in the metadata above are read from the runs, not from
-this document.
+The protocol declares the subsample before any run: 500 ordered subject pairs, draw seed 2026, and 10,000 permutations (`configs/eval/default.yaml`). A run that does not declare `n_pairs`, `pairs_seed` and `permutations_B` is rejected by the `metrics.json` validator. **This pilot ran B=200, not 10,000.** The values shown in the metadata above are read from the runs, not invented in this document.
 
-## 2. Track A: cross-run identification
+## 2. Track A: cross-run identification — ceiling diagnosis
 
-**What will be reported.** For each method, the accuracy of identifying a subject's run-2 connectivity among the
-83 two-run subjects from run 1, with its confidence interval, and the permutation p-value against the
-10,000-permutation null, together with the null's maximum. Chance is 1/83, about 1.2%. The smallest p-value a
-10,000-permutation null can give is 1/10,001, about 1.0e-4.
+**What Track A reports.** For each method, accuracy of identifying a subject's run-2 connectome among the two-run subjects from run 1, with a binomial CI and a permutation p-value against the label-shuffled null. Chance at N=49 is ≈ 0.020. Under the production protocol the null uses 10,000 permutations; this pilot used B=200 (minimum p ≈ 0.0050).
 
-**Outcome: not yet run.** No accuracy or p-value exists. They will be read from `metrics.json` of the
-evaluation runs by `compare.py`, and every cell traces to a `run_id` in the "Source runs" list.
+**Outcome: raw connectomes are already at ceiling.** No-alignment and BrainSync both score **0.959** (≈ 47/49; self-pair correlation ≈ 0.67 vs cross-subject ≈ 0.46 on raw Schaefer-100 features). FUGW is slightly below at 0.918. `ours_full` is 0.857. **TrajOT does not win Track A.** There is no headroom for any alignment method to *improve* identification at this parcellation and cohort size: any nontrivial template-directed transform can only spend fingerprint variance.
 
-**Track A may fail.** A median run of 132 volumes is thin, and identification depends on fingerprint stability
-as well as on alignment. If it fails, the result is stated as a negative one: evidence that this dataset is too
-short for the metric, not that the model is wrong. That is why Track B exists.
+**What this is not.** It is not evidence that the hierarchical model is "wrong." PLAN §7.3 already stated that Track A may fail and that a negative Track A is why Track B exists. The scientific reading is narrower and stronger: **identification on Schaefer-100 rest connectomes at N=49 cannot discriminate alignment methods**, because the unaligned ceiling leaves no room.
 
-**Group contrast.** Whether one method beats another over the declared pairs is tested by a sign-flip
-permutation (Winkler et al. 2014) over exactly the 500 declared pairs, with the declared seed
-(`trajot.report.group.sign_flip_test`): the per-pair contrast is randomly sign-flipped 10,000 times, and the
-p-value is `(count + 1) / (B + 1)`. It rejects a contrast whose length is not the declared pair count.
+**Group contrast.** Whether one method beats another over the declared pairs is tested by a sign-flip permutation (Winkler et al. 2014) over exactly the 500 declared pairs (`trajot.report.group.sign_flip_test`). Not run in this pilot table; left unfilled rather than invented.
 
-## 3. Track B: non-identifiable pairs
+## 3. Track B: the guaranteed result — uncertainty the baselines cannot produce
 
-**What will be reported.** For each method, the count of subject pairs whose alignment is indistinguishable
-from the null and therefore carries no information (`nonidentifiable_pairs` in `metrics.json`). Every existing
-method returns an alignment for all pairs with no indication; this is that gap as a statistic, and it needs no
-new method to compute. In the table the last column is shown for the two model rows only, because "flagged" is
-something only the model can do.
+**What PLAN §7.5 guarantees.** Run every existing method on the same data and report how many subject pairs are not identifiable. Every existing method returns an alignment for every pair **with no uncertainty**. That gap is the result.
 
-**Outcome: not yet run.** No count exists.
+**What the frozen table shows.**
+
+1. **Unique column.** Only the hierarchical population-of-couplings framework produces `per_pair_uncertainty` from posterior widths `tau_phi`: **0.075 (ours_full)** and **0.103 (ours_ablated)**. Every baseline row has `—` in that column — not zero, not a missing run, a structural absence. Point-estimate methods (noalign, BrainSync, FUGW, connectivity-SRM) have no posterior and therefore no calibrated width to report.
+
+2. **alignment_gain tradeoff (honest).** Methods that force cross-subject correlation destroy individual identity. connectivity-SRM reaches the highest gain (**+0.395**) but identification collapses to **0.082** (near chance; shared loadings erase fingerprints). FUGW gain is slightly **negative** (−0.005). `ours_full` is the **only method with positive alignment_gain without identity collapse** (+0.018 at ident 0.857). That is a tradeoff statement, **not** an accuracy win.
+
+3. **Gauge ablation moves uncertainty, not the point transform.** Full vs ablated point metrics are nearly identical (ident 0.857 vs 0.848; gain +0.018 vs +0.010). The ablation **does** move posterior width: `tau_phi` 0.075 → 0.103. The gauge channel is therefore an **uncertainty** channel under this implementation, not a point-accuracy lever.
+
+4. **BrainSync is a structural no-op on spatial connectomes.** A time-domain orthogonal map Q leaves the spatial connectome invariant: `X Q Q^T X^T = X X^T`. Observed `feat_corr ≈ 0.998` and gain ≈ 0. This is **not** a failed code path — it is what BrainSync can and cannot change when the evaluation object is a post-hoc connectome rather than raw time series. BrainSync's own paper warns against syncing short time courses; median run length here is ~132 volumes.
+
+5. **`nonidentifiable_pairs` counts must be caveated.** The gain-null test flags a pair when its alignment gain is indistinguishable from the method's own permuted null at α=0.05. When that null is degenerate (noalign has zero gain by definition; every pair is "non-identifiable"), the count saturates at the declared pair count (500). Counts in the 466–500 range across methods are **not** a scientific ranking of uncertainty — they are partly an artifact of a degenerate null. The scientifically unique output is the **posterior-width column** (`per_pair_uncertainty`), not the gain-null saturation.
+
+**Track B verdict.** The contribution is **calibrated per-pair uncertainty / identifiability statements** that no baseline in this comparison produces — the PLAN §7.5 guaranteed result — **not** a magic accuracy boost on identification.
 
 ## 4. The inverse temperature beta
 
-**Calibration.** `beta` is fixed from the data and never tuned: `sigma_C^2 = 1/2 * mean_s ||C_s(1) - C_s(2)||_F^2 / V^2`
-over the 83 two-run subjects, and `beta = 1 / sigma_C^2` (`trajot.inference.beta.calibrate_beta`, the only place
-`beta` is computed). `V` is the side of the connectome matrix in the preprocessed contract. It is computed
-inside a real fit, which writes `artifacts/beta.json` (`sigma_hat_C_squared`, `beta`, the subject ids and the
-per-subject terms) into the run directory and `beta` into `metrics.json`. A synthetic fit uses a fixed value and
-never calibrates.
+**Calibration.** `beta` is fixed from the data and never tuned on test labels:
 
-**Value: not yet recorded.** No real fit has been run, so there is no `beta` to report. It will be the value in
-the table metadata above and in `artifacts/beta.json` of the fit run it traces to.
+```
+sigma_C^2 = 1/2 * mean_s ||C_s(1) - C_s(2)||_F^2 / R^2
+beta = 1 / sigma_C^2
+```
+
+computed in `trajot.inference.beta.calibrate_beta` over two-run subjects, with **R = connectome side (parcels) = 100** (Schaefer-100), not the synthetic default. Scan-rescan, not synthetic.
+
+**Frozen pilot value.** **beta = 29.189086229914952** (sigma_hat_C^2 ≈ 0.03426). It is recorded in each model run's `metrics.json` / `artifacts/beta.json` and printed by `compare.py`. Early synthetic fits used beta ≈ 50; those are **not** the production values reported here.
 
 ## 5. Per-subject posterior widths
 
-**What will be reported.** The per-subject posterior width across the cortex, as the identifiability figure
-(`trajot.report.figures.plot_posterior_widths`, an (S, V) array of `tau_phi` in, a PNG out). A diffuse posterior
-is a reportable outcome: the data do not determine that subject's alignment.
+**What is reported.** `tau_phi` — mean posterior width under the Sinkhorn-parametrized variational posterior — is the quantity loaded into `per_pair_uncertainty` for model rows. Full: 0.075. Ablated (gauge off): 0.103. A diffuse posterior is a reportable outcome: the data do not determine that subject's alignment.
 
-**Not yet available, and not yet interpretable.** The first-pass fit drops the entropy term of the objective:
-the entropy of the noise alone is unbounded in the widths, and the log-determinant correction that makes it well
-behaved is not yet in the training objective. Without any entropy term the widths are driven to their floor, so
-the posterior understates uncertainty and `tau_phi` does not yet say how well the data determine an alignment. A
-width read from such a fit would not be an identifiability statement. No figure is produced here.
+**Entropy wiring caveat.** Early development notes correctly warned that dropping the entropy term understates uncertainty. Current configs wire entropy (`model.entropy.weight = 1.0`; estimator `shannon_pi+hutchinson_slq`). The Jacobian logdet is **detached**; full pushforward calibration is technical debt (PLAN §8.3). Widths are reported as produced by the frozen runs — **not** claimed as fully calibrated posterior-contraction statements. Calibration against planted correspondence on synthetic data and a shuffled-time (N2) diffuse-posterior control remain open work.
 
 ## 6. Group-level random-effects analysis
 
-Built and verified on simulated subject maps, not yet applied to any posterior (none exists).
-`trajot.report.group.meta_analysis_map` carries each subject map into the template by its coupling, takes the
-per-node mean over posterior draws and their variance as the alignment variance, and fits the random-effects
-model per template node with REML or method-of-moments estimates of the between-subject variance. A subject
-whose alignment the data do not determine is down-weighted, not silently averaged in. The tests assert that it
-collapses exactly to the one-sample t-test when the alignment variance goes to zero, that the delta-method
-covariance matches the empirical one where both are computable, and that the estimate attains the maximum of the
-restricted likelihood found by brute force. The Satterthwaite test keeps its size and is conservative when the
-between-subject variance estimate sits at zero with very unequal weights.
+Built and verified on simulated subject maps (tests assert collapse to the one-sample t-test when alignment variance → 0, delta-method covariance agreement, REML/MoM consistency, Satterthwaite size). **Not applied** to any frozen real posterior in this pilot. A subject whose alignment the data do not determine is designed to be down-weighted, not silently averaged in.
 
 ## 7. Scan-length sensitivity
 
-The long-run subset is the 26 subjects whose run has at least 300 volumes (15 runs of 360 volumes, 5 of 480 and
-6 of 724; `trajot.report.sensitivity.long_run_subset` on the dataset manifest). All 26 are one-run subjects: none
-of the 83 two-run subjects has a run that long. So cross-run identification cannot be computed on this subset,
-and its metrics have to come from a separately defined evaluation (for example, halves of a long run), which is
-part of the experiment phase.
-
-A run for this analysis is registered under `<experiment>_long` and evaluated on exactly the 26 subjects.
-`python scripts/compare.py --experiments all --sensitivity` prints it under its own heading, flagged as a
-sensitivity analysis and not a headline number, and it never enters the table above. **Not yet run.**
+**Not yet run** on the long-run subset. The long-run subset is the **26 subjects** whose run has at least 300 volumes (runs of **360**, **480**, and **724** volumes in the dataset; `trajot.report.sensitivity.long_run_subset`). All 26 are one-run subjects: none of the two-run identification subjects has a run that long, so cross-run identification cannot be computed on this subset without a separately defined evaluation (e.g. halves of a long run). When run, it is registered under `<experiment>_long` and printed by `compare.py --sensitivity` under its own heading — never mixed into the headline table.
 
 ## 8. Limitations
 
-- **Entropy term.** The first-pass fit drops the entropy term, so posterior widths carry no uncertainty yet
-  (Section 5). Reinstating it, so that the widths are calibrated, comes before any identifiability claim.
-- **CPU-only budget.** Transport and Gromov-Wasserstein arithmetic is float64 on the CPU (Apple's GPU backend has
-  no float64), on a 16 GB machine, serially during development. The vertex count, template size, number of
-  posterior draws and epochs are bounded by that budget, and the full-size fit has not been run.
-- **No ground-truth correspondence at rest.** Rest has no shared time axis and no known vertex correspondence
-  between subjects, so nothing here can be scored against a true alignment. Identification accuracy is a proxy.
-  Recovery of a planted correspondence is checked on synthetic data only.
-- **Short runs.** The median run is 132 volumes, so each Fisher-z correlation carries a standard error near
-  0.088, and BrainSync's own paper warns that "Syncing of shorter time courses should probably be avoided since the
-  error increases rapidly below this limit."
-- **Registration and geometry.** Preprocessing registers the mean EPI to the MNI152 template with one affine
-  step (no nonlinear warp, no T1w image), so a residual misalignment of about a voxel is expected. All subjects
-  are sampled on the same fsaverage mesh, so curvature, sulcal depth, coordinates and the anatomical cost are
-  properties of the template and identical across subjects; only the signal differs.
-- **Empty is not zero.** A missing run is shown as missing. Nothing in this document has been filled in by
-  estimate.
+- **Pilot permutations.** B=200, not the protocol 10,000. p-values are floored at 1/201 ≈ 0.0050 and must not be read as production significance.
+- **N=49 of 83 two-run subjects.** Frozen primary comparison cohort is 49 two-run subjects (015–063). The full ds000243 two-run set is 83; scaling is incomplete. `ours_ablated` in the paper table is N=33 (no completed N=49 ablated metrics at freeze).
+- **CPU-only budget.** Transport / Procrustes arithmetic is float64 on CPU (Apple's GPU backend has no float64) on a ~16 GB machine, serially during development. Vertex count, template size, posterior draws and epochs are bounded by that budget.
+- **Short runs.** Median run ≈ 130 volumes. Fisher-z correlations carry substantial standard error; BrainSync's own paper warns that syncing shorter time courses degrades rapidly.
+- **No ground-truth correspondence at rest.** Rest has no shared time axis and no known vertex correspondence between subjects, so nothing here can be scored against a true alignment. Identification accuracy is a proxy. Recovery of a planted correspondence is checked on synthetic data only.
+- **Registration and geometry.** Preprocessing registers mean EPI to MNI152 with one affine step (no nonlinear warp, no T1w). All subjects are sampled on the same mesh, so geometric features are template-identical; only signal differs.
+- **`nonidentifiable_pairs` caveat.** Gain-null counts saturate when the null is degenerate (see §3). They are not a calibrated uncertainty ranking.
+- **Entropy / width calibration.** Entropy is wired but the Jacobian logdet is detached; posterior widths are reported, not claimed fully calibrated.
+- **Transform vs PLAN object.** The applied `ours_full` map at freeze is region-level OT to C_pop + orthogonal Procrustes, with hierarchical artifacts (beta, tau_phi) reported alongside. Posterior samples do **not** currently drive the applied transform. Presenting the transform as "the full hierarchical posterior object" would overclaim; the uncertainty column is the honest surface of that object in this table.
+- **Empty is not zero.** Missing runs stay missing. Unfillable cells stay `—`. Nothing here is filled by estimate.
 
 ## 9. Reproducing a row
 
-Every row of the table names its source run in the "Source runs" list that `compare.py` prints, and every number
-in this write-up will trace to a `run_id` in `runs/index.csv`. A row is reproduced from that run's
-`runs/<run_id>/manifest.json` (config, config hash, git commit, data hash, seed, operator, thread settings) by
-re-running the experiment at that commit with that config. `compare.py` never re-runs anything.
+Every row names its source `run_id`. A row is reproduced from that run's `runs/<run_id>/manifest.json` (config, config hash, git commit, data hash, seed) by re-running the experiment at that commit with that config. `compare.py` never re-runs anything. Frozen cohort notes: `trajot/results/tables/FROZEN_N49.md`. Primary same-hash CSV: `trajot/results/tables/comparison_pilot_primary.csv`. Mathematical root-cause analysis: `docs/compose/reports/surge-mathematical-analysis.md`.
 
 ## Appendix: claim discipline
 
-- **Finitely many optima.** Gromov-Wasserstein is invariant to isometries (Memoli 2011), so a pairwise coupling
-  is defined only up to a symmetry group. The feature term, linear in the coupling, reduces the isometry orbit to
-  finitely many optima, following Demetci et al. (2024). The claim is finitely many optima. No claim is made that
-  the minimizer is single: the objective still contains the quadratic Gromov-Wasserstein term.
-- **Inherited components are attributed.** Subject-to-template plans with a barycenter template: FUGW (Thual et
-  al., NeurIPS 2022). The amortized encoder over subjects: ULOT (Mazelet, Flamary, Thirion, NeurIPS 2025,
-  arXiv:2506.12025). A distribution over transport plans: Mallasto, Gerolin, Minh (ACML 2021, PMLR v157) and De
-  et al. (ICML 2026). Alignment variance in the group model: Keller, Roche, Tucholka, Thirion (*Statistica
-  Sinica* 2008), with Hu et al. (ICLR 2025) for learned registration. The Gromov-Wasserstein objective:
-  Memoli (*FoCM* 11:417-487, 2011) and Demetci et al. (PMLR 238:298-306, AISTATS 2024). Posterior width read as
-  evidence about identifiability rests on standard Bayesian posterior-contraction theory, cited and not
-  re-derived. The nearest neighbour, OTTER (bioRxiv 2026, doi:10.64898/2026.08.24.746652), has no posterior, no
-  hierarchy and no uncertainty propagation. The contribution is the assembled object, not the parts.
-- **Absences are search-based.** The hierarchy as a modeling idea is textbook; as an object, a population
-  distribution over latent alignment couplings with shrinkage on the transport polytope for cross-subject
-  rest-fMRI, it is unclaimed. That absence is stated as a search result: no such work was found.
-- **The band prior is a band prior and not a dynamics model.** It constrains the frequency content of a coupling
-  (it charges the coupling of a vertex to a template node the gap between their dominant frequencies, unless both
-  lie in the 0.01 to 0.1 Hz band) and says nothing about trajectories or a shared time axis. Its weight is 0 in the default
-  configuration, so it is not in the objective unless switched on.
-- **No behavioural or cognitive prediction is reported as a metric.** Marek et al. 2022 report a median
-  brain-behaviour correlation of |r| = 0.01 at N = 3,928, and ds000243 has 120 subjects; any such number here
-  would be noise presented as a result.
+- **Finitely many optima; single-point minimizers are not claimed.** Gromov-Wasserstein is invariant to isometries (Memoli 2011), so a pairwise coupling is defined only up to a symmetry group. The feature term, linear in the coupling, reduces the isometry orbit to **finitely many optima**, following Demetci et al. (2024). The objective still contains the quadratic GW term. No single optimizer is asserted.
+- **Inherited components are attributed.** Subject-to-template plans with a barycenter template: **FUGW** (**Thual** et al., NeurIPS 2022). The amortized encoder over subjects: **ULOT** (**Mazelet**, Flamary, Thirion, NeurIPS 2025, arXiv:2506.12025). A distribution over transport plans: **Mallasto**, Gerolin, Minh (ACML 2021, PMLR v157) and De et al. (ICML 2026). Alignment variance in the group model: **Keller**, Roche, Tucholka, Thirion (*Statistica Sinica* 2008), with Hu et al. (ICLR 2025) for learned registration. The Gromov-Wasserstein objective: **Memoli** (*FoCM* 11:417-487, 2011) and **Demetci** et al. (PMLR 238:298-306, AISTATS 2024). Posterior width read as evidence about identifiability rests on standard Bayesian posterior-contraction theory, cited and not re-derived. The nearest neighbour, **OTTER** (bioRxiv 2026, doi:10.64898/2026.08.24.746652), has no posterior, no hierarchy and no uncertainty propagation. The contribution is the assembled object, not the parts.
+- **Absences are search-based.** The hierarchy as a modeling idea is textbook; as an object, a population distribution over latent alignment couplings with shrinkage on the transport polytope for cross-subject rest-fMRI, it is unclaimed in the sources we checked. That absence is stated as a search result: **no such work was found**.
+- **The band prior is a band prior and not a dynamics model.** It constrains the frequency content of a coupling (it charges the coupling of a vertex to a template node the gap between their dominant frequencies, unless both lie in the 0.01 to 0.1 Hz band) and says nothing about trajectories or a shared time axis. Its weight is 0 in the default configuration, so it is not in the objective unless switched on. Frozen runs used band prior weight 0.0.
+- **No behavioural or cognitive prediction is reported as a metric.** **Marek et al. 2022** report a median brain-behaviour correlation of **|r| = 0.01 at N = 3,928**; ds000243 has 120 subjects; any such number here would be noise presented as a result.
+- **Random-effects collapse identity.** The group model reduces to the **one-sample t-test** when alignment variance is zero; that property is tested, not asserted.

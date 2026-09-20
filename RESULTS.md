@@ -1,49 +1,23 @@
-# SURGE Neurohack 2026 - TrajOT Honest Results
+# SURGE Neurohack 2026 — TrajOT results (canonical location)
 
-## Track A: Identification Accuracy (N=49, same data_hash, B=200)
+Full honest write-up: **[`trajot/reports/RESULTS.md`](trajot/reports/RESULTS.md)**.
 
-| Method | Ident | Gain | NonIdent | Status |
-|--------|-------|------|----------|--------|
-| noalign | **0.959** | 0.000 | 500 | ok |
-| brainsync | **0.959** | -0.00005 | 469 | ok (near no-op on connectomes) |
-| fugw | 0.918 | -0.005 | 466 | ok |
-| conn_srm | 0.082 | **+0.395** | 467 | ok (ident collapses to chance) |
-| ours_full | 0.857 | +0.018 | 472 | ok (K=100, beta=29.19, tau_phi=0.075) |
+CLI table: `trajot/reports/results_table.md` (from `scripts/compare.py --experiments all`).
 
-**Track A verdict: TrajOT does NOT win.** noalign/brainsync score 0.959 vs ours 0.857.
+## Frozen N=49 verdict (one screen)
 
-## Track B: Alignment Gain
+Phase 2 pilot frozen · ds000243 · Schaefer-100 · beta=29.189 · N=49 · pairs=500 seed=2026 · B=200 pilot.
 
-- conn_srm: +0.395 (highest gain but ident collapses to 0.082 - not usable)
-- ours_full: +0.018 (only identity-preserving method with positive gain)
-- noalign/brainsync: 0.0
-- fugw: -0.005
+| Method | ID acc | alignment_gain | per_pair_uncertainty | run_id (abbrev) |
+|---|---|---|---|---|
+| noalign | 0.959 | 0.0 | — | `00_noalign__eebd2f8e__…` |
+| brainsync | 0.959 | ≈0 | — | `01_brainsync__b4f31914__…` |
+| fugw | 0.918 | −0.005 | — | `02_fugw__cf2f95f4__…` |
+| conn_srm | 0.082 | +0.395 | — | `03_conn_srm__0777ce05__…` |
+| **ours_full** | 0.857 | **+0.018** | **0.075** | `10_ours_full__dd67ab1e__…` |
+| **ours_ablated** | 0.85 (N=33) | ~0 | **0.103** | `11_ours_ablated__56a17400__…` |
 
-**Track B verdict: Partial win.** Ours has best positive gain without ident collapse.
-
-## Unique Contribution: Per-Pair Uncertainty
-
-Only ours_full reports `per_pair_uncertainty` (tau_phi=0.075 full, 0.103 ablated).
-Baselines cannot produce this column. This matches PLAN.md Section 7.5 guaranteed result.
-
-## Mathematical Diagnosis
-
-Root cause: barycentric projection toward template reduces between-subject variance needed for identification. Track A (fingerprinting) needs BETWEEN-subject differences; Track B gain needs WITHIN-subject commonality. These are mathematically opposed.
-
-Ceiling effect: raw Schaefer-100 connectomes already ident=0.94-0.96 at N=30-49.
-
-Full analysis: docs/compose/reports/surge-mathematical-analysis.md
-Primary table: trajot/results/tables/comparison_pilot_primary.csv
-Table write-up: trajot/results/tables/RESULTS.md
-
-## Code Fixes Landed
-
-Pushed as `24bff67`: evaluate.py diagnostics, run_experiment.py fit_error, ours.py C_pop path, configs K=100, compare.py CLI, ALLOWED_METHOD_KEYS import.
-
-Tests: 114 passed / 0 failed.
-
-## Honest Conclusion
-
-TrajOT's defensible claim is calibrated posterior uncertainty + positive gain without ident collapse + non-identifiability reporting. It does NOT beat baselines on identification accuracy. This matches PLAN.md's stated guaranteed result (Section 7.5), not a claim of superior fingerprinting.
-
-Note: `trajot/reports/RESULTS.md` remains the pre-experiment protocol document (claim discipline / empty-by-design template). Pilot results above come from the frozen N=49 comparison runs.
+- **Track A:** ceiling — raw connectomes ID at 0.94–0.96; TrajOT does **not** win identification.
+- **Track B:** only ours produces per-pair uncertainty (tau_phi). That is the contribution (PLAN §7.5).
+- **Trade-off:** only ours has positive gain without identity collapse.
+- Do not invent wins; do not fill unfillable cells with 0; do not claim unique minimizer or dynamics for the band prior.

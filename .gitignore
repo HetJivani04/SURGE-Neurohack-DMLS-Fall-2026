@@ -196,3 +196,14 @@ cython_debug/
 data/
 runs/
 configs/paths.yaml
+
+# Frozen real-data derivatives and experiment run dirs — large npz (template_geometry.npz >200MB)
+# Compact tables stay under trajot/results/tables/ (tracked)
+frozen_ds000243/
+private_freeze_*/
+trajot/runs_frozen/
+trajot/runs_private_freeze/
+trajot/logs_freeze_k100/
+trajot/logs_final_comparison/
+trajot/logs_private_freeze/
+trajot/artifacts/

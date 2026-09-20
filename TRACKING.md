@@ -6,9 +6,11 @@
 
 ---
 
+| 2026-09-20 | Phase2 lead | Frozen pilot n=24 | in progress | Cohort 015–038, frozen beta 29.189, B=200 debug. Ours transform = region-level OT coupling to C_pop then orthogonal Procrustes (not identity; tests assert non-identity). BrainSync wired with region-level timeseries lists + common-T crop. Ablated gauge-off train produces tau_phi. |
+
 ## Current phase
 
-**Phase 2 — Real-data experiments (preprocess 83 two-run subjects, baselines, ours_full/ours_ablated)**
+**Phase 2 — Frozen N=49 primary comparison complete (pilot B=200). Official write-up: `trajot/reports/RESULTS.md`.**
 
 ---
 
@@ -203,22 +205,30 @@ See the staging/runtime tables above. Summary:
 
 ## W4 coordination note
 
-W4 analysis and reporting (issue #6) starts after the orchestration runners produce real metrics.
+**Status: complete for the Phase 2 pilot freeze (N=49).** Canonical write-up: `trajot/reports/RESULTS.md`. CLI table: `trajot/reports/results_table.md` (also `trajot/results/tables/results_table.md`).
 
-**Inputs W4 consumes:**
+**W4 frozen N=49 verdict (do not invent wins):**
 
-- `runs/*/metrics.json` — schema published by W0; `METHOD_KEYS` now include `null_max` (may be JSON `null` when a method cannot fill it)
-- `runs/index.csv` — run registry
-- Comparison table from `scripts/compare.py` → `trajot/results/tables/comparison.csv` (also prints markdown)
+| Method | ID acc | alignment_gain | per_pair_uncertainty | run_id |
+|---|---|---|---|---|
+| noalign | 0.959 | 0.0 | — | `00_noalign__eebd2f8e__20260920T074351Z` |
+| brainsync | 0.959 | ≈0 | — | `01_brainsync__b4f31914__20260920T074433Z` |
+| fugw | 0.918 | −0.005 | — | `02_fugw__cf2f95f4__20260920T074534Z` |
+| conn_srm | 0.082 | +0.395 | — | `03_conn_srm__0777ce05__20260920T074652Z` |
+| ours_ablated | 0.85 (N=33) | ~0 | **0.103** | `11_ours_ablated__56a17400__20260920T071555Z` |
+| ours_full | 0.857 | **+0.018** | **0.075** | `10_ours_full__dd67ab1e__20260920T074747Z` |
 
-**Dependencies:**
+**Track A/B narrative:**
 
-- `METHOD_KEYS` including `null_max` (Agent C eval)
-- `tau_phi` uncertainty column once entropy is wired (Agent A) — model-only; baselines report `null`
-- Track B statistic: non-identifiable pairs via permutation null — `nonidentifiable_count(gains, null, alpha=0.05)` (Agent C)
-- `compare.py` produces the method × metric comparison table
+1. **Track A ceiling diagnosis.** Raw Schaefer-100 connectomes identify subjects at 0.94–0.96 (self-corr ≈0.67 vs cross ≈0.46). Track A cannot discriminate alignment methods at this parcellation — no headroom. TrajOT does **not** win identification (0.857 vs 0.959 for noalign/brainsync).
+2. **Track B guaranteed result.** Only the hierarchical population-of-couplings framework produces `per_pair_uncertainty` from `tau_phi` (0.075 full / 0.103 ablated). Every baseline reports an alignment for every subject pair with **no** uncertainty. That is the PLAN §7.5 contribution — calibrated uncertainty / identifiability statements, not a magic accuracy boost.
+3. **alignment_gain tradeoff.** Methods that force cross-subject correlation (conn_srm +0.395) destroy individual identity (acc 0.082). Ours is the only method with positive gain without identity collapse (+0.018). FUGW slightly negative.
+4. **Gauge ablation.** Point transforms nearly identical; gauge moves posterior width (`tau_phi` 0.075 vs 0.103) — uncertainty channel, not point accuracy.
+5. **BrainSync.** Time-domain orthogonal Q leaves spatial connectome invariant (`XQQ^T X^T = XX^T`); feat_corr≈0.998. Not a failed code path — structural limitation when scoring post-hoc connectomes.
+6. **nonident caveat.** When gain-null is degenerate, all pairs flag — not scientific uncertainty.
+7. **Pilot limits.** CPU-only, short runs T≈130, B=200 not 10000, N=49 of 83 two-run, ablated row is N=33, entropy Jacobian log-det detached.
 
-Coordinate status changes in this file; do not invent analysis numbers before runners land on real data.
+Coordinate status changes in this file; do not invent analysis numbers.
 
 ---
 
@@ -238,3 +248,5 @@ Coordinate status changes in this file; do not invent analysis numbers before ru
 | 2026-09-20 | Phase2 lead | Env + preprocess smoke | done | `paths.yaml` data_root=`/Users/anandlo/Surge2026F/ds000243-master`; pot/nibabel/nilearn ok; contract npz validated (100×100, V=5124, T=130). Smoke sub-015/016/017 both runs green (qc_pass). SHA 45d79f8 |
 | 2026-09-20 | Phase2 lead | Synthetic pollution fix | done | `evaluate.py` `_synthetic_via_contract` wrote into real data_root and overwrote manifest; sandboxed to `derivatives/trajot_synthetic` / `TRAJOT_SYNTHETIC_ROOT`. Removed sub-001–008 synthetic npz. SHA 6523ad5 |
 | 2026-09-20 | Phase2 lead | Full two-run preprocess | in progress | Background PID on all 83 two-run IDs (015–068, 092–120), n_jobs=1 (RAM ~2.8 GiB free). Pilot gate: ≥20 complete pairs → beta + baselines + ours; then scale to 83 for final table. Chance=1/83. Method keys: `ours_full`/`ours_ablated`. |
+| 2026-09-20 | Phase2 lead | Frozen pilot table | done | Cohort n=24 (015–038), beta=29.189, B=200. Ours transform = region OT coupling to C_pop + orthogonal Procrustes (not identity; tests green). BrainSync uses region timeseries with ragged-T crop. Model rows report tau_phi unc. compare.py 6x5 printed. Preprocess continues toward 83. |
+| 2026-09-20 | Phase2 | N=49 frozen primary | done | Cohort 015–063, data_hash `ccce8212b978`, beta=29.189, B=200. Verdict: Track A ceiling (noalign 0.959); ours_full 0.857 with +0.018 gain + tau_phi 0.075 only. Official RESULTS.md + tables committed. 210MB `template_geometry.npz` gitignored — no force-push. Longer ours_* trainings still running on CPU (do not kill). |

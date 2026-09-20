@@ -1,0 +1,5 @@
+experiment,run_id,method,status,fit_error,transforms_applied,ident_accuracy,ident_ci_lo,ident_ci_hi,perm_p,null_max,alignment_gain,nonidentifiable_pairs,per_pair_uncertainty,notes
+00_noalign,00_noalign__eebd2f8e__20260920T070711Z,noalign,,,,0.9333333333,0.8333333333,1,0.004975124378,0.1333333333,0,500,,per_pair_uncertainty unfilled
+01_brainsync,01_brainsync__b4f31914__20260920T070812Z,brainsync,,,,0.9333333333,0.8333333333,1,0.004975124378,0.1333333333,0,500,,per_pair_uncertainty unfilled; ValueError: BrainSync requires timeseries; use harness with data['timeseries_run1']; fallback=identity
+02_fugw,02_fugw__cf2f95f4__20260920T070923Z,fugw,,,,0.9,0.7666666667,1,0.004975124378,0.1333333333,-0.006001657026,474,,per_pair_uncertainty unfilled
+03_conn_srm,03_conn_srm__0777ce05__20260920T071134Z,conn_srm,ok,,True,0.1333333333,0.03333333333,0.2666666667,0.004975124378,0.1,0.391697063,475,,per_pair_uncertainty unfilled
