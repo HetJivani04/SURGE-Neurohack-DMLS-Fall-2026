@@ -170,7 +170,34 @@ def _run_experiment_method(
         ours_artifacts=ours_artifacts,
         data_root=cfg.data_root,
     )
-    stats = ev._strip_meta(stats)
+    # Persist diagnostics at method top-level even if a stub strip drops them.
+    meta = stats.get("_meta") or {}
+    fit_error = stats.get("fit_error")
+    if fit_error is None:
+        fit_error = meta.get("fit_error")
+    status = stats.get("status")
+    if status is None:
+        status = "identity_fallback" if fit_error else "ok"
+    transforms_applied = stats.get("transforms_applied")
+    if transforms_applied is None:
+        transforms_applied = False if status == "identity_fallback" else True
+
+    stripped = ev._strip_meta(stats)
+    if "status" not in stripped:
+        stripped["status"] = status
+    if "fit_error" not in stripped and fit_error is not None:
+        stripped["fit_error"] = fit_error
+    if "transforms_applied" not in stripped:
+        stripped["transforms_applied"] = bool(transforms_applied)
+    if "transform_diagnostics" not in stripped and isinstance(stats.get("transform_diagnostics"), dict):
+        stripped["transform_diagnostics"] = stats["transform_diagnostics"]
+    if fit_error is not None and stripped.get("fit_error") is None:
+        stripped["fit_error"] = fit_error
+    if stripped.get("status") in (None, ""):
+        stripped["status"] = status
+    if stripped.get("transforms_applied") is None:
+        stripped["transforms_applied"] = bool(transforms_applied)
+    stats = stripped
 
     notes_parts = []
     if synth:
@@ -179,9 +206,17 @@ def _run_experiment_method(
         notes_parts.append("null_max unfilled")
     if stats.get("per_pair_uncertainty") is None:
         notes_parts.append("per_pair_uncertainty unfilled")
-    meta = stats.get("_meta") or {}
-    if meta.get("fit_error"):
-        notes_parts.append(str(meta["fit_error"]))
+    # Prefer the persisted diagnostics field; fall back to _meta if stripped earlier.
+    fit_error = stats.get("fit_error") or fit_error
+    if fit_error:
+        notes_parts.append(str(fit_error))
+    status = stats.get("status") or status
+    if status == "identity_fallback" or meta.get("fallback"):
+        notes_parts.append(f"fallback={meta.get('fallback') or 'identity'}")
+        if status:
+            notes_parts.append(f"status={status}")
+    if stats.get("transforms_applied") is False:
+        notes_parts.append("transforms_applied=False")
 
     payload = {
         "experiment": experiment,
@@ -266,7 +301,7 @@ def main(argv: list[str] | None = None) -> int:
 
     seed, operator = cfg.get("run.seed"), getpass.getuser()
     derivatives = cfg.data_root / "derivatives" / "trajot"
-    data_hash = hash_data_root(derivatives)
+    data_hash = hash_data_root(derivatives, glob="sub-*_run-*.npz")
     manifest = dict(seed=seed, operator=operator, n_jobs=n_jobs, threads=threads,
                     data_hash=data_hash, start_utc=start_utc)
     write_manifest(run_dir, cfg, **manifest, end_utc=None)
@@ -288,11 +323,14 @@ def main(argv: list[str] | None = None) -> int:
     methods = metrics.get("methods") or {}
     if methods:
         primary = next(iter(methods.values()))
+    run_status = "ok"
+    if isinstance(primary, dict) and primary.get("status") in {"failed", "identity_fallback"}:
+        run_status = "failed"
     row = {
         "run_id": run_id, "experiment": cfg.experiment, "config_hash": cfg.hash,
         "git_commit": git_commit(), "data_hash": data_hash, "seed": seed, "operator": operator,
         "n_jobs": n_jobs, "start_utc": start_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "end_utc": end_utc.strftime("%Y-%m-%dT%H:%M:%SZ"), "status": "ok",
+        "end_utc": end_utc.strftime("%Y-%m-%dT%H:%M:%SZ"), "status": run_status,
     }
     if isinstance(primary, dict):
         row["ident_accuracy"] = primary.get("ident_accuracy")

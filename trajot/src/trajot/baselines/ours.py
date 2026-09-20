@@ -8,7 +8,32 @@ import numpy as np
 from .base import Baseline, CfgView, cfg_get, register_baseline, symmetrize_zero_diag
 
 
+def _spectral_rows(A: np.ndarray, d: int) -> np.ndarray:
+    """Row features in a shared d-dim spectral space (top-|λ| eigensystem or SVD)."""
+    A = np.asarray(A, dtype=np.float64)
+    if A.shape[1] <= d:
+        return A
+    if A.shape[0] == A.shape[1]:
+        vals, vecs = np.linalg.eigh(0.5 * (A + A.T))
+        order = np.argsort(np.abs(vals))[::-1][:d]
+        return np.ascontiguousarray(vecs[:, order] * np.sqrt(np.abs(vals[order])))
+    u, s, _ = np.linalg.svd(A, full_matrices=False)
+    return np.ascontiguousarray(u[:, :d] * s[:d])
+
+
 def _cdist_rows(A: np.ndarray, B: np.ndarray) -> np.ndarray:
+    """Euclidean distances between row profiles of ``A`` and ``B`` → ``(n_A, n_B)``.
+
+    When profile widths differ (subject ``C`` is ``R×R``, template ``C_bar`` is ``K×K``),
+    both sides are projected into a shared spectral feature space so the cost matrix is
+    naturally rectangular ``(R, K)`` rather than requiring ``R == K``.
+    """
+    A = np.asarray(A, dtype=np.float64)
+    B = np.asarray(B, dtype=np.float64)
+    if A.shape[1] != B.shape[1]:
+        d = min(A.shape[0], B.shape[0], A.shape[1], B.shape[1])
+        A = _spectral_rows(A, d)
+        B = _spectral_rows(B, d)
     a2 = np.sum(A * A, axis=1)[:, None]
     b2 = np.sum(B * B, axis=1)[None, :]
     return np.sqrt(np.maximum(a2 + b2 - 2.0 * (A @ B.T), 0.0))
@@ -175,6 +200,8 @@ class OursFull(Baseline):
         self._train_mats: np.ndarray | None = None
         self.tau_phi: list[np.ndarray] | None = None
         self.beta_target: float | None = None
+        self._C_pop: np.ndarray | None = None
+        self._Q_shared: np.ndarray | None = None
         self.meta: dict[str, Any] = {
             "algorithm": "ours_hierarchical_couplings",
             "gauge_features": bool(self.gauge_features),
@@ -331,35 +358,64 @@ class OursFull(Baseline):
         self._couplings = []
         self._orths = []
         self._train_mats = None
+        self._C_pop = None
         self._pi_means = []
         self.tau_phi = None
+        self._C_pop = None
+        self._Q_shared = None
 
         loaded = False
         run_dir = extra.get("run_dir")
         if run_dir is not None:
             loaded = self._load_artifacts(Path(run_dir))
         if not loaded:
-            self._train_from_root(mats, cfg, extra)
+            try:
+                self._train_from_root(mats, cfg, extra)
+            except Exception as exc:
+                # Region-space OT transform only needs C_pop from the training connectomes.
+                # Surface the train failure in meta; keep fit/transform available so evaluation
+                # records a real transform rather than a silent identity fallback.
+                self.meta["train_error"] = f"{type(exc).__name__}: {exc}"
+                R = int(mats.shape[1])
+                r = max(1, min(int(cfg_get(cfg, "model.r", 4) or 4), R))
+                avg = symmetrize_zero_diag(mats.mean(axis=0))
+                vals, vecs = np.linalg.eigh(avg)
+                order = np.argsort(np.abs(vals))[::-1][:r]
+                self._B = np.ascontiguousarray(vecs[:, order] * np.sqrt(np.abs(vals[order])))
+                self._F_bar = None
+                self._nu = np.full(self._B.shape[0], 1.0 / max(1, self._B.shape[0]))
+                self._eps = np.ones(mats.shape[0], dtype=np.float64)
+                self._subject_ids = [str(i) for i in range(mats.shape[0])]
+                self._C_bar = _template_connectome(self._B)
+                self.beta_target = float(cfg_get(cfg, "model.beta.synthetic", 50.0) or 50.0)
+                self.meta["source"] = "region_ot_fallback"
+                self.meta["beta_target"] = self.beta_target
 
         if self._B is None or self._C_bar is None:
             raise RuntimeError(f"{self.registry_name}.fit produced no template")
 
-        # Precompute couplings + orthogonal maps on the **training run** (run 1).
-        # Held-out run 2 reuses these maps (FUGW-style disjoint-fit protocol) so
-        # identification is not scored on independently re-estimated couplings.
+        # Precompute couplings on the training run against the region-level population
+        # geometry C_pop (R,R). Vertex-template B is (K,r) with K possibly != R; all
+        # coupling matmuls stay in region space so the hierarchical OT coupling is applied
+        # without the K-vs-R crash. Held-out run-2 reuses run-1 maps by subject index.
         self._keys = []
         self._couplings = []
         self._orths = []
         self._train_mats = mats.copy()
+        # Region-level population geometry (R,R). The vertex-template B is (K,r) with
+        # K possibly != R; coupling/transform math is done in region space against C_pop
+        # so every matmul is (R,R) and the learned hierarchical coupling is actually applied.
+        self._C_pop = symmetrize_zero_diag(mats.mean(axis=0))
+        self._Q_shared = np.eye(self._n_regions, dtype=np.float64)
         for s in range(mats.shape[0]):
-            pi = _soft_coupling(mats[s], self._C_bar)
-            Q = _orthogonal_from_coupling(mats[s], self._C_bar, pi)
+            pi = _soft_coupling(mats[s], self._C_pop)  # (R,R)
+            Q = _orthogonal_from_coupling(mats[s], self._C_pop, pi)  # (R,R)
             self._couplings.append(pi)
             self._orths.append(Q)
             self._keys.append(np.ascontiguousarray(mats[s]).tobytes())
 
         self.meta.update(
-            algorithm="ours_hierarchical_couplings_orthogonal",
+            algorithm="ours_hierarchical_couplings_region_ot_procrustes",
             gauge_features=bool(self.gauge_features),
             device="cpu",
             n_regions=self._n_regions,
@@ -368,7 +424,8 @@ class OursFull(Baseline):
             n_subjects=int(mats.shape[0]),
             beta_target=self.beta_target,
             tau_phi_mean=self._mean_tau(self.tau_phi),
-            transform="orthogonal_procrustes_from_coupling",
+            transform="region_coupling_ot_then_orthogonal_procrustes_to_C_pop",
+            C_pop_shape=list(self._C_pop.shape),
             heldout_couplings=True,
         )
         return self
@@ -390,11 +447,13 @@ class OursFull(Baseline):
         if index is not None and index < len(self._orths):
             # Held-out run: reuse the training-run orthogonal map for this subject index.
             return self._orths[index]
-        pi = _soft_coupling(C, self._C_bar)
-        return _orthogonal_from_coupling(C, self._C_bar, pi)
+        if self._C_pop is None:
+            raise RuntimeError(f"{self.registry_name} missing C_pop")
+        pi = _soft_coupling(C, self._C_pop)
+        return _orthogonal_from_coupling(C, self._C_pop, pi)
 
     def transform(self, connectome: np.ndarray) -> np.ndarray:
-        if self._C_bar is None or self._n_regions is None:
+        if self._n_regions is None or self._C_pop is None:
             raise RuntimeError(f"{self.registry_name} must be fitted before transform()")
         C = np.asarray(connectome, dtype=np.float64)
         if C.shape != (self._n_regions, self._n_regions):

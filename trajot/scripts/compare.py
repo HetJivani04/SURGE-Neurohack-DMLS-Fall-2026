@@ -43,6 +43,9 @@ FLAT_COLUMNS = [
     "experiment",
     "run_id",
     "method",
+    "status",
+    "fit_error",
+    "transforms_applied",
     "ident_accuracy",
     "ident_ci_lo",
     "ident_ci_hi",
@@ -132,6 +135,9 @@ def _flat_collect_rows(runs_dir: Path) -> list[dict[str, Any]]:
                 "experiment": experiment,
                 "run_id": run_id,
                 "method": method,
+                "status": stats.get("status"),
+                "fit_error": stats.get("fit_error"),
+                "transforms_applied": stats.get("transforms_applied"),
                 "ident_accuracy": _flat_num(stats.get("ident_accuracy")),
                 "ident_ci_lo": _flat_num(ci_lo),
                 "ident_ci_hi": _flat_num(ci_hi),
@@ -155,7 +161,7 @@ def _flat_csv_text(rows: list[dict[str, Any]]) -> str:
 
 
 def _flat_markdown(rows: list[dict[str, Any]]) -> str:
-    headers = ["experiment", "method", "ident_accuracy", "perm_p", "null_max",
+    headers = ["experiment", "method", "status", "transforms_applied", "ident_accuracy", "perm_p", "null_max",
                "alignment_gain", "nonidentifiable_pairs", "per_pair_uncertainty"]
     lines = [
         "| " + " | ".join(headers) + " |",

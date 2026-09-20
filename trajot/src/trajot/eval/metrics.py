@@ -28,6 +28,16 @@ METHOD_KEYS = {
     "per_pair_flags",
 }
 
+# Evaluator diagnostics (D7 extension): make identity fallback visible in metrics.json.
+# Required METHOD_KEYS remain mandatory; these are optional extras.
+DIAGNOSTIC_METHOD_KEYS = {
+    "fit_error",
+    "transforms_applied",
+    "transform_diagnostics",
+    "status",
+}
+ALLOWED_METHOD_KEYS = METHOD_KEYS | DIAGNOSTIC_METHOD_KEYS
+
 # Columns baselines often cannot fill; Agent D serializes these as JSON null.
 OPTIONAL_METHOD_KEYS = {
     "null_max",
@@ -60,9 +70,9 @@ def validate_metrics_payload(payload: dict[str, Any]) -> None:
         raise ValueError("methods must be a dict")
 
     for method, stats in methods.items():
-        if set(stats) != METHOD_KEYS:
-            extra = set(stats) - METHOD_KEYS
-            missing = METHOD_KEYS - set(stats)
+        missing = METHOD_KEYS - set(stats)
+        extra = set(stats) - ALLOWED_METHOD_KEYS
+        if missing or extra:
             raise ValueError(
                 f"method {method!r} keys mismatch; missing={sorted(missing)}, extra={sorted(extra)}"
             )

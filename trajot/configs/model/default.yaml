@@ -1,5 +1,5 @@
 # Full model. Loaded under the `model.` prefix of the resolved config.
-K: 512              # template nodes
+K: 100              # template nodes; must equal preprocess.n_regions for real transforms
 d: 32               # embedding dimension
 r: 32               # rank of the connectivity factorization
 m_draws: 4          # posterior draws per subject per step

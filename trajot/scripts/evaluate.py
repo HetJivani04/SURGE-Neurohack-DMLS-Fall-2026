@@ -79,7 +79,13 @@ def _timeseries_kwargs(timeseries: Any, *, run: str) -> dict[str, Any]:
     if timeseries is None:
         return {}
     if isinstance(timeseries, dict):
-        ts = timeseries.get(run) or timeseries.get(f"run{run}") or timeseries.get("run1")
+        ts = None
+        for key in (run, f"run{run}", "run1", "run2"):
+            if key in timeseries and timeseries[key] is not None:
+                candidate = timeseries[key]
+                # Never boolean-test array-likes: `or` on ndarrays raises ValueError.
+                ts = candidate
+                break
         if ts is None:
             return {}
         return {"timeseries_run1" if run == "1" else "timeseries_run2": ts}
@@ -213,6 +219,72 @@ def _fit_transform(
     return aligned1, aligned2, meta
 
 
+def _feat_corr(flat_a: np.ndarray, flat_r: np.ndarray) -> float | None:
+    """Pearson corr of flattened aligned vs raw features."""
+    a = np.asarray(flat_a, dtype=np.float64).ravel()
+    r = np.asarray(flat_r, dtype=np.float64).ravel()
+    if a.size != r.size or a.size < 2:
+        return None
+    sa, sr = float(np.std(a)), float(np.std(r))
+    if sa < 1e-15 or sr < 1e-15:
+        return 1.0 if bool(np.allclose(a, r)) else 0.0
+    return float(np.corrcoef(a, r)[0, 1])
+
+
+def _aligned_changed(
+    aligned1: np.ndarray,
+    aligned2: np.ndarray,
+    raw1: np.ndarray,
+    raw2: np.ndarray,
+) -> bool:
+    """True when aligned outputs differ from the raw runs (identity fallback is False)."""
+    for aligned, raw in ((aligned1, raw1), (aligned2, raw2)):
+        a = np.asarray(aligned, dtype=np.float64)
+        r = np.asarray(raw, dtype=np.float64)
+        if a.shape != r.shape:
+            return True
+        if a.size and not np.allclose(a, r, rtol=0.0, atol=0.0, equal_nan=True):
+            return True
+    return False
+
+
+def _transform_diagnostics(
+    aligned1: np.ndarray,
+    aligned2: np.ndarray,
+    raw1: np.ndarray,
+    raw2: np.ndarray,
+) -> dict[str, Any]:
+    """How much the transform actually changed the inputs.
+
+    ``max_abs_diff``: max |aligned - raw| over both runs.
+    ``feat_corr``: Pearson corr of concatenated flattened features (aligned vs raw).
+    """
+    diffs: list[float] = []
+    for aligned, raw in ((aligned1, raw1), (aligned2, raw2)):
+        a = np.asarray(aligned, dtype=np.float64)
+        r = np.asarray(raw, dtype=np.float64)
+        if a.shape == r.shape and a.size:
+            diffs.append(float(np.max(np.abs(a - r))))
+    max_abs_diff = max(diffs) if diffs else None
+    try:
+        flat_a = np.concatenate(
+            [
+                np.asarray(aligned1, dtype=np.float64).ravel(),
+                np.asarray(aligned2, dtype=np.float64).ravel(),
+            ]
+        )
+        flat_r = np.concatenate(
+            [
+                np.asarray(raw1, dtype=np.float64).ravel(),
+                np.asarray(raw2, dtype=np.float64).ravel(),
+            ]
+        )
+        feat_corr = _feat_corr(flat_a, flat_r)
+    except Exception:
+        feat_corr = None
+    return {"max_abs_diff": max_abs_diff, "feat_corr": feat_corr}
+
+
 def evaluate_method(
     name: str,
     method: Any,
@@ -227,7 +299,13 @@ def evaluate_method(
 ) -> dict[str, Any]:
     """Transform both runs and score D7 metrics via trajot.eval.
 
-    Keys are exactly ``METHOD_KEYS``. Unfilled model-only columns are JSON ``null``.
+    Keys are ``METHOD_KEYS`` plus evaluator diagnostics
+    (``status``, ``transforms_applied``, ``transform_diagnostics``,
+    and ``fit_error`` when fit/transform raised). On fit/transform
+    failure the method is marked ``status="identity_fallback"`` with
+    null score columns — never scored as a successful noalign run.
+    Successful transforms always report ``transforms_applied=True``
+    plus ``transform_diagnostics`` (max_abs_diff / feat_corr).
     """
     if method is None:
         method_key, method = _resolve_method(name)
@@ -249,11 +327,31 @@ def evaluate_method(
             data_root=data_root,
         )
     except Exception as exc:
-        # Keep payload schema-valid; record why the method fell back to identity.
+        # Keep payload schema-valid; never score identity fallback as a successful run.
         fit_error = f"{type(exc).__name__}: {exc}"
         meta = {"fit_error": fit_error, "fallback": "identity"}
         aligned1 = np.asarray(run1, dtype=np.float64)
         aligned2 = np.asarray(run2, dtype=np.float64)
+        transform_diagnostics = _transform_diagnostics(aligned1, aligned2, run1, run2)
+        return {
+            "ident_accuracy": None,
+            "ident_ci": None,
+            "perm_p": None,
+            "null_max": None,
+            "alignment_gain": None,
+            "nonidentifiable_pairs": None,
+            "per_pair_uncertainty": None,
+            "per_pair_flags": None,
+            "status": "identity_fallback",
+            "transforms_applied": False,
+            "transform_diagnostics": transform_diagnostics,
+            "fit_error": fit_error,
+            "_meta": meta,
+        }
+
+    transform_diagnostics = _transform_diagnostics(aligned1, aligned2, run1, run2)
+    transforms_applied = True
+    status = "ok"
 
     B = int(cfg.get("eval.permutations.B") or 1000)
     seed = int(cfg.get("run.seed") or 0)
@@ -380,6 +478,9 @@ def evaluate_method(
         "nonidentifiable_pairs": int(n_nonident),
         "per_pair_uncertainty": None if per_pair_uncertainty is None else float(per_pair_uncertainty),
         "per_pair_flags": None if per_pair_flags is None else [bool(v) for v in per_pair_flags],
+        "status": status,
+        "transforms_applied": bool(transforms_applied),
+        "transform_diagnostics": transform_diagnostics,
     }
     if meta:
         stats["_meta"] = meta
@@ -387,8 +488,11 @@ def evaluate_method(
 
 
 def _strip_meta(stats: dict[str, Any]) -> dict[str, Any]:
-    keys = _method_keys()
-    return {k: stats[k] for k in keys if k in stats}
+    """Keep METHOD_KEYS plus evaluator diagnostics; drop ``_meta`` and other ad-hoc keys."""
+    from trajot.eval.metrics import ALLOWED_METHOD_KEYS
+
+    allowed = _method_keys() | set(ALLOWED_METHOD_KEYS)
+    return {k: stats[k] for k in allowed if k in stats}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -452,26 +556,25 @@ def _parcellate_timeseries(ts_vt: np.ndarray, labels: np.ndarray, n_regions: int
     return region_ts
 
 
-def _load_timeseries(root: Path, subjects: list[str]) -> dict[str, np.ndarray] | None:
+def _load_timeseries(root: Path, subjects: list[str]) -> dict[str, Any] | None:
     """Load two-run timeseries for baselines.
 
-    Returns region-resolution ``(S,R,T)`` stacks when template labels are available
-    (BrainSync requires ``V == R`` connectome-resolution series). Falls back to raw
-    contract vertex series only if labels cannot be resolved.
+    Returns region-resolution series when template labels are available (BrainSync needs
+    ``V == R``). Subject runs may differ in ``T`` (130/132/133 on ds000243); stacks are
+    therefore truncated to the cohort minimum length so a single ``(S,R,T)`` array is
+    well-defined. Falls back to vertex series only if labels cannot be resolved.
     """
     from trajot.io.contract import read_subject_run, subject_run_path
 
     labels = None
-    n_regions = None
     geom = root / "derivatives" / "trajot" / "template_geometry.npz"
     if geom.is_file():
         try:
             with np.load(geom) as z:
                 if "region_labels" in z.files:
                     labels = np.asarray(z["region_labels"])
-                    n_regions = int(z["n_left"]) * 2 if False else int(labels.max()) + 1
         except Exception:
-            labels, n_regions = None, None
+            labels = None
 
     ts1, ts2 = [], []
     for sid in subjects:
@@ -484,15 +587,19 @@ def _load_timeseries(root: Path, subjects: list[str]) -> dict[str, np.ndarray] |
         a2 = np.asarray(d2["timeseries"], dtype=np.float32)
         conn_r = int(np.asarray(d1["connectivity"]).shape[0])
         if labels is not None and a1.shape[0] == labels.shape[0]:
-            R = conn_r
-            a1 = _parcellate_timeseries(a1, labels, R)
-            a2 = _parcellate_timeseries(a2, labels, R)
+            a1 = _parcellate_timeseries(a1, labels, conn_r)
+            a2 = _parcellate_timeseries(a2, labels, conn_r)
         ts1.append(a1)
         ts2.append(a2)
     if not ts1:
         return None
     try:
-        return {"run1": np.stack(ts1, axis=0), "run2": np.stack(ts2, axis=0)}
+        min_t = min(min(a.shape[1] for a in ts1), min(a.shape[1] for a in ts2))
+        if min_t < 2:
+            return None
+        r1 = np.stack([a[:, :min_t] for a in ts1], axis=0)
+        r2 = np.stack([a[:, :min_t] for a in ts2], axis=0)
+        return {"run1": r1, "run2": r2, "n_time_truncated_to": int(min_t)}
     except Exception:
         return None
 

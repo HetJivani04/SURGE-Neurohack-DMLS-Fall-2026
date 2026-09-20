@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -79,15 +80,27 @@ def test_a_real_run_calibrates_beta_from_the_two_run_subjects_and_writes_beta_js
 
     def fake_calibrate(root, subjects=None, out_dir=None):
         calls.append((Path(root), subjects))
-        result = {"sigma_hat_C_squared": 0.08, "beta": 12.5, "n_subjects": 83, "subject_ids": [], "per_subject_terms": []}
+        result = {
+            "sigma_hat_C_squared": 0.08,
+            "beta": 12.5,
+            "n_regions": 100,
+            "n_subjects": 83,
+            "subject_ids": [],
+            "per_subject_terms": [],
+        }
         (Path(out_dir) / "beta.json").write_text(json.dumps(result))
         return result
 
     monkeypatch.setattr("trajot.inference.beta.calibrate_beta", fake_calibrate)
     monkeypatch.setattr(script, "RUNS_DIR", project / "runs")
+    # TINY writes six subjects; present the full-cohort manifest so fit takes the subjects=None calibration path
+    monkeypatch.setattr(
+        "trajot.io.contract.two_run_subjects",
+        lambda manifest, strict=True: [f"{i:03d}" for i in range(1, 84)],
+    )
     # the data root's K must not exceed the vertex count, so shrink K through the config the run resolves
     config = project / "configs" / "model" / "default.yaml"
-    config.write_text(config.read_text().replace("K: 512 ", "K: 24  "))
+    config.write_text(re.sub(r"^K:\s*\d+", f"K: {TINY['V']}", config.read_text(), count=1, flags=re.M))
 
     assert script.main(cli(project, "--epochs", "1")) == 0
     run = only_run(project)
