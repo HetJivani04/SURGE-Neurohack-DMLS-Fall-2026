@@ -188,6 +188,8 @@ conn_srm on N=83 remains **INVALID** (identity collapse: ident 0.024, gain +0.38
 - **Identification withdrawal.** Under the per-subject same-map protocol (map fitted on run-1, applied to both runs), identification accuracy is fitted Q = 1.0, Haar-random Q = 1.0, permuted fitted Q = 1.0, single common map = 0.9036, identity/no-map = 0.9157. Any per-subject map family makes the protocol trivially perfect (the correct pair shares its map; wrong pairs are compared across mismatched maps), so identification is uninterpretable for per-subject maps. The earlier draft claim `task_sota_ident_and_reliability` (commit ed7b984, not pushed) is **retracted**.
 - **τ-λ variant** (`REAL_sota_stats_n83_posterior_tau.{json,md}`, `λ_mean=0.893`): reliability Δrel +0.0122 / +0.0116 / +0.0362, all CIs exclude 0 — same reliability verdict, smaller Δrel. No cross-dataset claim: this is ds000243 rest, same-map protocol only.
 
+**Artifacts and training length (disclosed).** The N=83 primary artifacts (`10_ours_full__9d7dab12`) come from a 4-epoch training run (4 x 11 steps; loss trace 4 entries); the N=49 replication artifacts (`73533e35`) come from 5 epochs. Longer attempts diverged on the Sinkhorn marginal constraint and are **not** used: the N=83 `081aaddd` attempt (20 epochs x 11 steps) reached row-marginal-error 0.97 and a 50-epoch attempt (`cc0eb3e4`, N=49, 50 x 7 steps) reached 0.98. The reliability claim is dominated by the template-directed component (≈89%), which does not depend on deep posterior convergence; the subject-specific increment is +0.0056 (see controls above).
+
 ### Superseded: fallback-path bootstrap (artifacts 73533e35; honest ledger)
 
 The earlier 49/83-posterior run produced fallback-path numbers (full N=83 fallback: Δrel +0.0028 / +0.0022 / +0.0268 vs noalign / BrainSync / FUGW; ident −0.072 / −0.060 / −0.060 — identification *worse* than baselines) and a 49-subject subset (Δrel +0.0434 / +0.0425 / +0.0648; ident +0.020 / +0.020 / +0.061 trend-only). Those are **superseded** by the primary N=83 table above; they remain documented here because this ledger does not rewrite history.
@@ -224,6 +226,7 @@ The regenerated N=83 gap table now carries a full-cohort group block — n_subje
 7. **Gain-null nonident counts** — saturate under degenerate nulls; not a scientific uncertainty rate. Posterior τ / REML n_eff are the uncertainty surface.
 8. **Long-run scan-length sensitivity** — not run on the frozen two-run cohort (long runs are one-run subjects).
 9. **N=83 hierarchical posterior_shrink (first attempt, artifacts 73533e35)** — was INCOMPLETE: posteriors covered 49/83 subjects and the transform fell back to `region_emd_procrustes` (ident degraded, 0.843 vs ~0.90–0.92 baselines). **Superseded**: artifacts `9d7dab12` cover 83/83 with the hierarchical path active; the N=83 **reliability** claim is earned (§5b).
+10. **Longer `ours_full` training runs diverge on the marginal constraint** — `081aaddd` (N=83, 20 epochs x 11 steps) reached row-marginal-error 0.97 and the 50-epoch `cc0eb3e4` (N=49, 50 x 7 steps) reached 0.98; both are excluded from all tables.
 
 ---
 
