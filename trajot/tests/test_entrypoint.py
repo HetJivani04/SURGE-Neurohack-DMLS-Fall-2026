@@ -43,7 +43,7 @@ def project(tmp_path):
     """configs/ + scripts/run_experiment.py copied to tmp_path, so runs/ lands in tmp_path too."""
     shutil.copytree(ROOT / "configs", tmp_path / "configs", ignore=shutil.ignore_patterns("paths.yaml"))
     (tmp_path / "configs" / "paths.yaml").write_text(
-        f"data_root: {tmp_path / 'data'}\ncontract_version: '1'\n")
+        f"data_root: {tmp_path / 'data'}\ncontract_version: '1.0.0'\n")
     (tmp_path / "scripts").mkdir()
     shutil.copy(ROOT / "scripts" / "run_experiment.py", tmp_path / "scripts")
     return tmp_path

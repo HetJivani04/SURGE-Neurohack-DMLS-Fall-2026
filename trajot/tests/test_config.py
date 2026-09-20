@@ -18,7 +18,7 @@ def project(tmp_path):
     """A copy of configs/ with a paths.yaml, so tests never depend on the developer's own."""
     shutil.copytree(CONFIGS, tmp_path / "configs", ignore=shutil.ignore_patterns("paths.yaml"))
     (tmp_path / "configs" / "paths.yaml").write_text(
-        f"data_root: {tmp_path / 'data'}\ncontract_version: '1'\n")
+        f"data_root: {tmp_path / 'data'}\ncontract_version: '1.0.0'\n")
     return tmp_path
 
 
@@ -44,8 +44,31 @@ def test_every_experiment_config_is_valid_and_hashable(exp_path, name):
     assert len(cfg.hash) == 64
     assert cfg.get("run.n_jobs") == 1
     assert cfg.get("eval.pairs.n") == 500 and cfg.get("eval.permutations.B") == 10000
-    assert cfg.get("data.contract_version") == "1"
+    assert cfg.get("data.contract_version") == "1.0.0"
     json.dumps(cfg.raw)
+
+
+@pytest.mark.parametrize("name", EXPERIMENTS)
+def test_every_experiment_config_carries_the_keys_w1_reads(exp_path, name):
+    """Issue #3: W1 reads its keys from configs/experiments/*.yaml, which W0 owns."""
+    cfg = load_config(exp_path(name))
+    assert cfg.get("preprocess.slice_order") in ("interleaved_odd_first", "interleaved_even_first", "sequential_ascending")
+    assert (cfg.get("preprocess.bandpass.low"), cfg.get("preprocess.bandpass.high"), cfg.get("preprocess.bandpass.order")) == (0.01, 0.1, 2)
+    assert cfg.get("preprocess.gsr") is True
+    assert cfg.get("preprocess.surface") == "fsaverage4" and cfg.get("preprocess.n_regions") == 100
+    assert cfg.get("preprocess.qc.max_mean_fd_mm") > 0 and 0 < cfg.get("preprocess.qc.min_mask_dice") < 1
+    assert (cfg.get("model.d"), cfg.get("model.r")) == (32, 32)  # the embedding dimension and factorization rank
+
+
+@pytest.mark.parametrize("name", EXPERIMENTS)
+def test_every_experiment_config_carries_the_keys_w2_reads(exp_path, name):
+    """Issue #4: W2 reads its keys from configs/model/*.yaml, which W0 owns."""
+    cfg = load_config(exp_path(name))
+    assert cfg.get("model.sigma_f2") > 0 and cfg.get("model.beta.synthetic") > 0
+    assert all(cfg.get(f"model.prior.{k}") is not None for k in ("sigma_B", "sigma_F", "F0", "a_eps", "b_eps", "B_max_row_norm"))
+    assert all(cfg.get(f"model.encoder.{k}") for k in ("p", "n_blocks", "heads", "m_eigvecs", "lambda_init"))
+    assert cfg.get("model.band.seconds") == [10.0, 100.0] and cfg.get("model.band.bandwidth") > 0 and cfg.get("model.band.weight") == 0.0
+    assert cfg.get("model.train.epochs") > 0 and cfg.get("model.train.lr") > 0
 
 
 def test_model_and_eval_configs_are_merged_in(exp_path):
@@ -74,7 +97,7 @@ def test_missing_paths_yaml_says_how_to_fix_it(project):
 def test_paths_yaml_keys_land_under_data(exp_path, project):
     cfg = load_config(exp_path())
     assert cfg.data_root == project / "data"
-    assert cfg.get("data.contract_version") == "1"
+    assert cfg.get("data.contract_version") == "1.0.0"
 
 
 def test_overrides_are_applied_last(exp_path):
@@ -101,7 +124,7 @@ def test_hash_ignores_filename_key_order_and_data_root(project):
     (exp / "renamed_copy.yaml").write_text(yaml.safe_dump(dict(reversed(list(data.items()))), sort_keys=False))
     assert load_config(exp / "renamed_copy.yaml").hash == original.hash
 
-    (project / "configs" / "paths.yaml").write_text("data_root: /other/machine/ds000243\ncontract_version: '1'\n")
+    (project / "configs" / "paths.yaml").write_text("data_root: /other/machine/ds000243\ncontract_version: '1.0.0'\n")
     other = load_config(exp / "00_noalign.yaml")
     assert other.data_root != original.data_root and other.hash == original.hash
 
@@ -117,7 +140,7 @@ def test_any_single_override_changes_the_hash(exp_path, key, value):
 def test_hash_tracks_contract_version(project):
     path = project / "configs" / "experiments" / "00_noalign.yaml"
     before = load_config(path)
-    (project / "configs" / "paths.yaml").write_text(f"data_root: {project}\ncontract_version: '2'\n")
+    (project / "configs" / "paths.yaml").write_text(f"data_root: {project}\ncontract_version: '2.0.0'\n")
     assert load_config(path).hash != before.hash
 
 

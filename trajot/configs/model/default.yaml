@@ -9,3 +9,25 @@ sinkhorn:
   eps: [0.1, 0.01]  # entropic regularisation schedule (start, end)
 beta:
   warmup_frac: 0.3  # fraction of training over which beta is warmed up
+  synthetic: 50.0   # fixed beta for synthetic fits: beta is never calibrated on synthetic data
+sigma_f2: 1.0       # feature noise variance
+prior:
+  sigma_B: 1.0
+  sigma_F: 1.0
+  F0: 0.0
+  a_eps: 3.0        # InvGamma hyperprior of the per-subject sharpness eps_s
+  b_eps: 0.4
+  B_max_row_norm: 1.3   # scale constraint on the template loadings B
+encoder:
+  p: 152            # hidden width; about 1.2M parameters with 4 blocks at K = 512
+  n_blocks: 4
+  heads: 4
+  m_eigvecs: 8      # Laplacian eigenvectors in the encoder input
+  lambda_init: 1.0  # initial weight of the anatomical anchor in the score
+band:
+  seconds: [10.0, 100.0]   # band prior edges in seconds
+  bandwidth: 0.05
+  weight: 0.0       # 0 leaves the band prior out of the ELBO
+train:
+  epochs: 100
+  lr: 0.001

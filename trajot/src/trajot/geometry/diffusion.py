@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import numpy as np
+from scipy.linalg import eigh
+from scipy.sparse.linalg import ArpackNoConvergence, eigsh
 
 
 def diffusion_map(
@@ -9,75 +11,103 @@ def diffusion_map(
     alpha: float = 1.0,
     t: float = 1.0,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Compute diffusion-map coordinates from a non-negative affinity matrix.
+    """Diffusion-map coordinates of a symmetric affinity matrix ``C`` ``(V, V)``.
 
-    Notes
-    -----
-    Coordinates are scaled by lambda_k**t, which sets the diffusion scale. With
-    t=1.0 (default), this is a single-step diffusion geometry.
+    ``W = max(C, 0)`` (diffusion geometry needs non-negative affinities), ``q = W 1``,
+    ``W_alpha = q^-alpha W q^-alpha``, ``D = diag(W_alpha 1)``. The random-walk matrix
+    ``D^-1 W_alpha`` is solved through the symmetric problem on ``D^-1/2 W_alpha D^-1/2``,
+    keeping the ``d`` largest non-trivial eigenvalues (``lambda_0 = 1`` is skipped) with
+    eigenvectors ``psi_k = D^-1/2 v_k`` normalized so that ``sum_i pi_i psi_k[i]^2 = 1`` under
+    the stationary measure ``pi ~ D``. Returns ``z_i = (lambda_k^t psi_k[i])_k`` as ``(V, d)``
+    float64 and the eigenvalues ``(d,)`` float64, strictly decreasing.
+
+    The factor ``lambda_k^t`` is what makes Euclidean distance between rows of the embedding
+    equal the diffusion distance at scale ``t``; ``t = 1`` (one diffusion step) is the default.
+
+    Only the ``d + 1`` largest eigenpairs are needed, so large matrices use Lanczos (ARPACK)
+    with a fixed starting vector, which is deterministic and about 30x faster than a dense
+    solve at ``V = 5,000``; small matrices, or a failure to converge, use a dense solve. The
+    ``V x V`` work is done in place (peak about two ``V x V`` float64 arrays), and the sign of
+    each coordinate is fixed (its largest entry is positive) so repeated runs agree exactly.
     """
 
     affinity = np.asarray(C, dtype=np.float64)
     if affinity.ndim != 2 or affinity.shape[0] != affinity.shape[1]:
         raise ValueError(f"C must be square 2D, found shape {affinity.shape}")
+    n = affinity.shape[0]
 
     W = np.maximum(affinity, 0.0)
     q = W.sum(axis=1)
     q[q <= 0] = 1e-12
-
     q_alpha = np.power(q, -alpha)
-    W_alpha = (q_alpha[:, None] * W) * q_alpha[None, :]
+    W *= q_alpha[:, None]
+    W *= q_alpha[None, :]
 
-    D = W_alpha.sum(axis=1)
+    D = W.sum(axis=1)
     D[D <= 0] = 1e-12
     D_inv_sqrt = np.power(D, -0.5)
+    W *= D_inv_sqrt[:, None]
+    W *= D_inv_sqrt[None, :]
 
-    S = (D_inv_sqrt[:, None] * W_alpha) * D_inv_sqrt[None, :]
-    S = 0.5 * (S + S.T)
+    k = min(d, n - 1)
+    evals = evecs = None
+    if n > 200 and 2 * (k + 1) < n:
+        try:
+            evals, evecs = eigsh(W, k=k + 1, which="LA", v0=np.random.default_rng(0).standard_normal(n), tol=1e-10)
+        except ArpackNoConvergence:
+            evals = evecs = None
+    if evals is None:
+        evals, evecs = eigh(W, subset_by_index=[n - k - 1, n - 1], overwrite_a=True)
+    del W
+    order = np.argsort(evals)[::-1]  # descending; index 0 is the trivial component
+    evals, evecs = evals[order], evecs[:, order]
 
-    evals, evecs = np.linalg.eigh(S)
-    order = np.argsort(evals)[::-1]
-    evals = evals[order]
-    evecs = evecs[:, order]
+    evals_nt = evals[1 : k + 1]
+    psi = D_inv_sqrt[:, None] * evecs[:, 1 : k + 1]
 
-    # Skip the trivial lambda_0 ~ 1 component.
-    evals_nt = evals[1 : d + 1]
-    evecs_nt = evecs[:, 1 : d + 1]
-
-    psi = D_inv_sqrt[:, None] * evecs_nt
-
-    # Normalize under stationary measure pi_i proportional to D_i.
     pi = D / D.sum()
     norms = np.sqrt((pi[:, None] * (psi**2)).sum(axis=0))
     norms[norms == 0.0] = 1.0
     psi = psi / norms[None, :]
+
+    psi *= np.where(psi[np.abs(psi).argmax(axis=0), np.arange(psi.shape[1])] < 0, -1.0, 1.0)[None, :]
 
     coords = psi * np.power(evals_nt[None, :], t)
     return coords.astype(np.float64), evals_nt.astype(np.float64)
 
 
 def laplacian_eigenvectors(C: np.ndarray, m: int = 8) -> np.ndarray:
-    """Return smallest non-trivial eigenvectors of the normalized Laplacian."""
+    """The ``m`` smallest non-trivial eigenvectors of the normalized Laplacian of ``max(C, 0)``, ``(V, m)`` float64.
+
+    These are the largest non-trivial eigenvectors of ``D^-1/2 W D^-1/2``. Large matrices use Lanczos with a
+    fixed starting vector (deterministic, far faster than a dense solve at ``V = 5,000``); small ones, or a
+    failure to converge, use a dense solve.
+    """
 
     affinity = np.asarray(C, dtype=np.float64)
     if affinity.ndim != 2 or affinity.shape[0] != affinity.shape[1]:
         raise ValueError(f"C must be square 2D, found shape {affinity.shape}")
 
+    n = affinity.shape[0]
     W = np.maximum(affinity, 0.0)
     deg = W.sum(axis=1)
     deg[deg <= 0] = 1e-12
 
     inv_sqrt_deg = np.power(deg, -0.5)
-    norm_aff = (inv_sqrt_deg[:, None] * W) * inv_sqrt_deg[None, :]
-    L = np.eye(W.shape[0], dtype=np.float64) - norm_aff
-    L = 0.5 * (L + L.T)
+    W *= inv_sqrt_deg[:, None]
+    W *= inv_sqrt_deg[None, :]  # now the normalized affinity; L = I - W
 
-    evals, evecs = np.linalg.eigh(L)
-    order = np.argsort(evals)
-    evecs = evecs[:, order]
-
-    m_eff = min(m, max(0, W.shape[0] - 1))
-    return evecs[:, 1 : m_eff + 1].astype(np.float64)
+    m_eff = min(m, max(0, n - 1))
+    evals = evecs = None
+    if n > 200 and 2 * (m_eff + 1) < n:
+        try:
+            evals, evecs = eigsh(W, k=m_eff + 1, which="LA", v0=np.random.default_rng(0).standard_normal(n), tol=1e-10)
+        except ArpackNoConvergence:
+            evals = evecs = None
+    if evals is None:
+        evals, evecs = np.linalg.eigh(0.5 * (W + W.T))
+    order = np.argsort(evals)[::-1]  # largest affinity eigenvalue = smallest Laplacian eigenvalue = trivial
+    return evecs[:, order][:, 1 : m_eff + 1].astype(np.float64)
 
 
 def gauge_velocity(z: np.ndarray, coords: np.ndarray, dt: float) -> np.ndarray:
@@ -119,10 +149,16 @@ def gauge_velocity(z: np.ndarray, coords: np.ndarray, dt: float) -> np.ndarray:
 
 
 def gauge_features(z: np.ndarray, v: np.ndarray, beta: float) -> np.ndarray:
-    """Return fused gauge features f_i = [z_i ; beta * v_i].
+    """Return the gauge features ``f_i = [z_i ; beta * v_i]`` as ``(V, 2d)`` float64.
 
-    The beta term is expected to be the calibrated inverse noise temperature
-    beta = sigma_C^-2 from scan-rescan reliability, not a free hyperparameter.
+    ``beta`` is the calibrated inverse temperature ``sigma_C^-2`` from scan-rescan reliability
+    (W2), not a free parameter, so the weight of the velocity channel is set by how reliable
+    an individual's own connectome is between two scans.
+
+    Why the features are needed: the Gromov-Wasserstein term is quadratic in the coupling and
+    invariant to isometries (Memoli 2011), so a coupling is defined only up to a symmetry
+    group. A feature term that is *linear* in the coupling selects a label assignment and
+    reduces the isometry orbit to finitely many optima. It never yields "a unique minimizer".
     """
 
     emb = np.asarray(z, dtype=np.float64)

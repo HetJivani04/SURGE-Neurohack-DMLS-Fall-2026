@@ -18,6 +18,7 @@ dependencies = [
     "nibabel",
     "nilearn",
     "pot",
+    "matplotlib",
 ]
 
 [project.optional-dependencies]
