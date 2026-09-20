@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 
@@ -164,6 +164,125 @@ def _lambda_from_tau(mean_tau: float | None, tau0: float) -> float:
     if tau0 <= 0:
         raise ValueError(f"tau0 must be positive, got {tau0}")
     return 1.0 / (1.0 + (float(mean_tau) / tau0) ** 2)
+
+
+def subject_tau_means(tau_phi: Sequence[Any] | None) -> list[float | None]:
+    """Per-subject mean τ (or None when missing)."""
+    if not tau_phi:
+        return []
+    out: list[float | None] = []
+    for t in tau_phi:
+        if t is None:
+            out.append(None)
+            continue
+        arr = np.asarray(t, dtype=np.float64)
+        out.append(float(np.mean(arr)) if arr.size else None)
+    return out
+
+
+def calibrated_tau0(
+    tau_phi: Sequence[Any] | None,
+    fixed_tau0: float,
+    *,
+    auto: bool = True,
+    ratio_trigger: float = 10.0,
+) -> float:
+    """Scale τ0 to the empirical subject-τ median when the fixed value cannot discriminate.
+
+    Adaptive λ(τ) is the hierarchy-in-the-map mechanism. If fixed ``tau0`` swamps
+    (or is swamped by) trained τ, every subject shares λ and the posterior stops
+    driving alignment strength. When ``auto`` and ``fixed_tau0 / median(τ)`` is
+    outside ``[1/ratio_trigger, ratio_trigger]``, return ``max(median(τ), ε)``.
+    """
+    fixed = float(fixed_tau0)
+    if not auto or not tau_phi:
+        return fixed
+    means = [m for m in subject_tau_means(tau_phi) if m is not None]
+    if not means:
+        return fixed
+    med = float(np.median(means))
+    if med <= 0:
+        return fixed
+    ratio = fixed / med
+    if ratio > float(ratio_trigger) or ratio < 1.0 / float(ratio_trigger):
+        return max(med, 1e-12)
+    return fixed
+
+
+def shrink_pi_hierarchical(
+    pi_bars: list[np.ndarray],
+    tau_means: Sequence[float | None],
+    *,
+    kappa0: float = 1.0,
+) -> list[np.ndarray]:
+    """Hierarchical shrinkage of subject couplings toward the population mean.
+
+    ``π_s^hier = (w_s π̄_s + w_pop π̄_pop) / (w_s + w_pop)`` with
+    ``w_s = 1/(τ_s²+ε)`` and ``w_pop = κ0/(τ̄²+ε)``.
+
+    Low-τ (determined) subjects keep their own posterior coupling — the
+    posterior drives their map. High-τ subjects borrow the population coupling.
+    Point baselines (BrainSync / FUGW / ULOT) cannot perform this step.
+    """
+    if not pi_bars:
+        return []
+    stacked = np.stack([np.asarray(p, dtype=np.float64) for p in pi_bars], axis=0)
+    pi_pop = stacked.mean(axis=0)
+    taus = list(tau_means) if tau_means else [None] * len(pi_bars)
+    if len(taus) < len(pi_bars):
+        taus = taus + [None] * (len(pi_bars) - len(taus))
+    valid = [t for t in taus if t is not None and np.isfinite(t)]
+    tau_bar = float(np.mean(valid)) if valid else 0.0
+    eps = 1e-12
+    out: list[np.ndarray] = []
+    for s, pi in enumerate(pi_bars):
+        pi = np.asarray(pi, dtype=np.float64)
+        t_s = taus[s]
+        if t_s is None:
+            out.append(pi.copy())
+            continue
+        w_s = 1.0 / (float(t_s) ** 2 + eps)
+        w_pop = float(kappa0) / (tau_bar**2 + eps)
+        out.append((w_s * pi + w_pop * pi_pop) / (w_s + w_pop))
+    return out
+
+
+def _discover_data_roots(extra: Mapping[str, Any], run_dir: Path | None) -> list[Path]:
+    """Candidate data roots for Schaefer region labels when extra['data_root'] is missing."""
+    roots: list[Path] = []
+    for key in ("data_root", "data.root"):
+        val = extra.get(key)
+        if val:
+            roots.append(Path(str(val)))
+    if run_dir is not None:
+        # metrics / beta sidecars sometimes sit beside artifacts
+        for cand in (run_dir, Path(run_dir).parent):
+            for name in ("paths.yaml", "metrics.json"):
+                p = Path(cand) / name
+                if not p.is_file():
+                    continue
+                try:
+                    text = p.read_text()
+                except Exception:
+                    continue
+                for token in text.replace('"', " ").replace("'", " ").split():
+                    if "ds000243" in token or "frozen_ds" in token:
+                        roots.append(Path(token.strip(",")))
+    for hard in (
+        Path("/Users/anandlo/Surge2026F/ds000243-master"),
+        Path("/tmp/surge-coord/frozen_ds000243"),
+        Path.home() / "Surge2026F" / "ds000243-master",
+    ):
+        roots.append(hard)
+    seen: set[str] = set()
+    uniq: list[Path] = []
+    for r in roots:
+        key = str(r)
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(Path(r))
+    return uniq
 
 
 def _region_index_from_data_root(
@@ -365,12 +484,19 @@ class OursFull(Baseline):
     gauge_features: bool = True
     transform_mode: str = "posterior_shrink"
     tau0: float = 0.1
+    tau0_auto: bool = True
+    hierarchical_pi_shrink: bool = True
+    kappa0: float = 1.0
     registry_name: str = "ours_full"
 
     def __init__(self) -> None:
         self.device = "cpu"
         self.transform_mode = str(type(self).transform_mode)
         self.tau0 = float(type(self).tau0)
+        self.tau0_auto = bool(getattr(type(self), "tau0_auto", True))
+        self.hierarchical_pi_shrink = bool(getattr(type(self), "hierarchical_pi_shrink", True))
+        self.kappa0 = float(getattr(type(self), "kappa0", 1.0))
+        self.tau0_eff: float | None = None
         self._B: np.ndarray | None = None
         self._F_bar: np.ndarray | None = None
         self._nu: np.ndarray | None = None
@@ -440,9 +566,10 @@ class OursFull(Baseline):
                 arr = np.asarray(rids[subject_pos], dtype=np.int64).ravel()
                 if arr.shape[0] == V:
                     return arr
-        data_root = extra.get("data_root")
-        if data_root is not None:
-            root = Path(str(data_root))
+        data_roots = [Path(str(extra[k])) for k in ("data_root", "data.root") if extra.get(k)]
+        if not data_roots:
+            data_roots = _discover_data_roots(extra, extra.get("_run_dir_for_discovery"))
+        for root in data_roots:
             idx = _region_index_from_data_root(root, subject_id, V)
             if idx is not None:
                 return idx
@@ -575,6 +702,10 @@ class OursFull(Baseline):
         R = int(mats.shape[1])
         if mode == "point_procrustes":
             return "point_procrustes_C_pop"
+        if mode == "c_bar_procrustes":
+            # Scientific retry: align to learned template geometry C_bar = B B^T via EMD,
+            # full Procrustes — hierarchical pi_bar is NOT used in the map.
+            return "c_bar_procrustes"
         if mode != "posterior_shrink":
             return "region_emd_procrustes"
         if not self._pi_means or self._C_bar is None or self._B is None:
@@ -608,6 +739,8 @@ class OursFull(Baseline):
                 f"connectomes must be (S,R,R) with square R, found {mats.shape}"
             )
         extra = dict(extra or {})
+        if extra.get("run_dir") is not None:
+            extra.setdefault("_run_dir_for_discovery", extra["run_dir"])
         # Ablated variants always keep gauge off; OursFull may be overridden by cfg.
         if type(self).gauge_features is False:
             self.gauge_features = False
@@ -626,6 +759,15 @@ class OursFull(Baseline):
             self.tau0 = float(cfg_tau0)
         elif getattr(self, "tau0", None) is None:
             self.tau0 = float(type(self).tau0)
+        cfg_tau0_auto = cfg_get(cfg, "model.tau0_auto", None)
+        if cfg_tau0_auto is not None:
+            self.tau0_auto = bool(cfg_tau0_auto)
+        cfg_hier = cfg_get(cfg, "model.hierarchical_pi_shrink", None)
+        if cfg_hier is not None:
+            self.hierarchical_pi_shrink = bool(cfg_hier)
+        cfg_kappa = cfg_get(cfg, "model.kappa0", None)
+        if cfg_kappa is not None:
+            self.kappa0 = float(cfg_kappa)
 
         self._n_regions = int(mats.shape[1])
         self._keys = []
@@ -681,35 +823,55 @@ class OursFull(Baseline):
 
         if path == "posterior_shrink_tau_gated":
             # Posterior-gated path: load means only — never re-run ot.emd.
+            # Hierarchical π shrinkage + τ-calibrated λ make the posterior DRIVE the map
+            # (determined subjects keep their coupling and align hard; undetermined borrow
+            # population mass and stay closer to identity).
             C_bar = self._C_bar
+            tau_means = subject_tau_means(self.tau_phi)
+            if len(tau_means) < mats.shape[0]:
+                tau_means = tau_means + [None] * (mats.shape[0] - len(tau_means))
+            self.tau0_eff = calibrated_tau0(
+                self.tau_phi if self.tau_phi else tau_means,
+                self.tau0,
+                auto=bool(self.tau0_auto),
+            )
+            pi_bars: list[np.ndarray] = []
             for s in range(mats.shape[0]):
                 pi_raw = np.asarray(self._pi_means[s], dtype=np.float64)
                 ridx = self._region_indices[s] if s < len(self._region_indices) else None
-                pi_bar = pool_pi_to_regions(pi_raw, ridx, self._n_regions)
+                pi_bars.append(pool_pi_to_regions(pi_raw, ridx, self._n_regions))
+            if self.hierarchical_pi_shrink and len(pi_bars) >= 2:
+                pi_bars = shrink_pi_hierarchical(pi_bars, tau_means, kappa0=self.kappa0)
+            pi_pop = np.mean(np.stack(pi_bars, axis=0), axis=0)
+            for s in range(mats.shape[0]):
+                pi_bar = pi_bars[s]
                 # Learned template geometry denoises vs raw C_pop when K matches coupling cols.
                 if C_bar.shape[0] != pi_bar.shape[1]:
-                    # K mismatch: spectral row features of C_bar as rectangular reference
-                    # via coupling P @ C_bar @ P.T still requires C_bar.shape[0]==K.
-                    # Project C_bar toward region count with spectral embedding when needed.
                     d = min(C_bar.shape[0], self._n_regions, pi_bar.shape[1])
-                    C_feat = _spectral_rows(C_bar, d)  # (K, d)
-                    # Rebuild a (K,K) PSD stand-in still consistent with coupling columns
-                    # by using the spectral Gram in the original K space.
+                    C_feat = _spectral_rows(C_bar, d)
                     C_for_pi = symmetrize_zero_diag(C_feat @ C_feat.T)
                     if C_for_pi.shape[0] != pi_bar.shape[1]:
                         C_for_pi = C_bar
                 else:
                     C_for_pi = C_bar
                 Q = _orthogonal_from_coupling(mats[s], C_for_pi, pi_bar)
-                lam = _lambda_from_tau(
-                    self._subject_tau(self.tau_phi, s),
-                    self.tau0,
-                )
+                lam = _lambda_from_tau(tau_means[s], self.tau0_eff)
                 self._couplings.append(pi_bar)
                 self._orths.append(Q)
                 self._lams.append(float(lam))
                 self._keys.append(np.ascontiguousarray(mats[s]).tobytes())
             algo = "ours_hierarchical_couplings_posterior_shrink"
+        elif path == "c_bar_procrustes":
+            # Retry: EMD to learned C_bar = B B^T (when region-square), full Procrustes.
+            target = self._C_bar if (self._C_bar is not None and self._C_bar.shape[0] == self._n_regions) else self._C_pop
+            for s in range(mats.shape[0]):
+                pi = _soft_coupling(mats[s], target)
+                Q = _orthogonal_from_coupling(mats[s], target, pi)
+                self._couplings.append(pi)
+                self._orths.append(Q)
+                self._lams.append(1.0)
+                self._keys.append(np.ascontiguousarray(mats[s]).tobytes())
+            algo = "ours_c_bar_procrustes"
         else:
             # Point Procrustes / region EMD fallback: hierarchy is not in the map.
             # Both use EMD against C_pop; meta['transform'] records which path ran.
@@ -745,11 +907,22 @@ class OursFull(Baseline):
         )
         if path == "posterior_shrink_tau_gated" and self._lams:
             self.meta["lambda_mean"] = float(np.mean(self._lams))
+            self.meta["lambda_min"] = float(np.min(self._lams))
+            self.meta["lambda_max"] = float(np.max(self._lams))
             self.meta["reference_geometry"] = "C_bar_BBt"
+            self.meta["tau0_eff"] = self.tau0_eff
+            self.meta["tau0_auto"] = bool(self.tau0_auto)
+            self.meta["hierarchical_pi_shrink"] = bool(self.hierarchical_pi_shrink)
+            self.meta["posterior_drives_transform"] = True
+        elif path == "c_bar_procrustes":
+            self.meta["reference_geometry"] = "C_bar_BBt"
+            self.meta["posterior_drives_transform"] = False
         elif path == "point_procrustes_C_pop":
             self.meta["reference_geometry"] = "C_pop"
+            self.meta["posterior_drives_transform"] = False
         else:
             self.meta["reference_geometry"] = "C_pop"
+            self.meta["posterior_drives_transform"] = False
         return self
 
     @property
@@ -788,11 +961,15 @@ class OursFull(Baseline):
         path = str(self.meta.get("transform", ""))
         if path == "posterior_shrink_tau_gated" and self._C_bar is not None:
             # Unseen subject: last-resort coupling to learned geometry (may call EMD).
-            # No subject τ → full Procrustes (λ=1); posterior path is not re-inferred.
+            # No subject τ → use population λ if available, else full Procrustes.
             pi = _soft_coupling(C, self._C_bar)
             Q = _orthogonal_from_coupling(C, self._C_bar, pi)
-            lam = 1.0
+            lam = float(np.mean(self._lams)) if self._lams else 1.0
             return Q, lam
+        if path == "c_bar_procrustes" and self._C_bar is not None and self._C_bar.shape[0] == C.shape[0]:
+            pi = _soft_coupling(C, self._C_bar)
+            Q = _orthogonal_from_coupling(C, self._C_bar, pi)
+            return Q, 1.0
         target = self._C_pop if self._C_pop is not None else self._C_bar
         pi = _soft_coupling(C, target)
         Q = _orthogonal_from_coupling(C, target, pi)
