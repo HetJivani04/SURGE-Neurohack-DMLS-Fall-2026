@@ -21,8 +21,10 @@ Protocol
 
 Claim discipline (PLAN + scientific closer mandate)
 ---------------------------------------------------
-- ID superiority is claimed only if the 95% CI for the paired ident delta excludes 0
-  in the positive direction.
+- Identification is NOT claimable under the per-subject same-map protocol: the
+  metric is invariant to any per-subject invertible map (fitted, permuted and
+  Haar-random maps all give 1.0). Identification is reported only as identity
+  preservation.
 - Otherwise reliability_delta may carry the SOTA claim if its 95% CI is positive.
 - If neither holds, verdict is ``trend_only`` / ``no_statistical_win``.
 - conn_srm is not treated as a valid gain competitor (identity collapse).
@@ -552,15 +554,13 @@ def verdict_from_stats(stats: dict[str, Any]) -> dict[str, Any]:
         "give 1.0; identity 0.9157; single common map 0.9036). Use a leak-free "
         "(cross-fitted) protocol to assess identification."
     )
-    ident_win = False  # map-invariance control: same-map ident is uninterpretable
+    notes.append(
+        "IDENT CLAIM SUPPRESSED: same-map identification is map-invariant "
+        "(fitted/permuted/Haar per-subject maps all score 1.0) \u2014 ident cannot "
+        "carry a claim under this protocol."
+    )
 
-    if ident_win and reliability_claim:
-        sota_claim = "task_sota_ident_and_reliability"
-        claim_text = (
-            "Posterior-gated hierarchical alignment improves identification and "
-            "scan-rescan reliability on real ds000243 with bootstrap CIs excluding 0."
-        )
-    elif reliability_claim:
+    if reliability_claim:
         sota_claim = "task_sota_reliability"
         if rel_vs_all:
             claim_text = (
@@ -598,7 +598,8 @@ def verdict_from_stats(stats: dict[str, Any]) -> dict[str, Any]:
         "reliability_ci_excludes_zero_vs_noalign": rel_vs_noalign_sig,
         "reliability_point_nonneg_vs_compared": rel_point_nonneg,
         "do_not_claim": [
-            "ID superiority if bootstrap CI includes 0",
+            "ID superiority (never claimable — identification is map-invariant "
+            "under the same-map protocol; fitted/permuted/Haar-random maps all give 1.0)",
             "Calibrated coverage on real rest",
             "Gain-null nonident counts as scientific rate",
             "conn_srm as competitor on gain",
@@ -975,11 +976,10 @@ def main(argv: list[str] | None = None) -> int:
             "ident_bootstrap": "recompute top-1 on resampled subject galleries",
             "reliability": "corr(vec(T(C1)), vec(T(C2))) per subject",
             "claim_rule": (
-                "SOTA if 95% CI ident_delta excludes 0 positive vs any of "
-                "noalign/BrainSync/FUGW, OR reliability_delta CI excludes 0 vs "
-                "noalign with non-negative point deltas vs BrainSync/FUGW. "
-                "Pre-registered task_sota_reliability requires reliability CI exclude 0 "
-                "vs ALL of noalign/BrainSync/FUGW."
+                "reliability_delta with 95% CI excluding 0 carries the claim; "
+                "identification is not claimable under the same-map protocol "
+                "(map-invariant — Haar/permuted controls = 1.0) and is reported "
+                "as identity preservation only."
             ),
         },
         "data_root": str(data_root),
