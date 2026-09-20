@@ -1,6 +1,6 @@
 # REAL_sota_stats_n83_posterior_entropy gap columns + SOTA stats
 
-- claim: **task_sota_reliability** — Posterior-gated hierarchical alignment improves scan-rescan reliability on real ds000243 vs noalign, BrainSync and FUGW (paired bootstrap 95% CIs exclude 0 for all three). Identification is NOT claimed: the same-map identification metric is invariant to any per-subject invertible map (fitted, permuted and Haar-random maps all give 1.0).
+- claim: **task_sota_reliability** — Posterior-gated hierarchical alignment improves scan-rescan reliability on real ds000243 vs noalign, BrainSync, and FUGW (paired bootstrap 95% CIs exclude 0 for all three). Identification is NOT claimed: the same-map ident metric is invariant to any per-subject invertible map (fitted/permuted/Haar-random maps all score 83/83).
 - ident withdrawal: Identification is NOT claimable under per-subject same-map protocols: the metric is invariant to the map (fitted, permuted and Haar-random per-subject maps all give 1.0; identity 0.9157; single common map 0.9036). Use a leak-free (cross-fitted) protocol to assess identification.
 - same-Q both runs: True
 - n_boot: 10000
