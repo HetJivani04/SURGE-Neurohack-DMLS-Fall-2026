@@ -107,11 +107,12 @@ class OursFull(Baseline):
     """Full hierarchical population-of-couplings model behind the baseline interface.
 
     ``fit`` loads W2 artifacts from ``extra['run_dir']/artifacts`` when present
-    (``template.npz`` + optional ``posterior_samples.npz``), otherwise calls
-    ``trajot.inference.train.train`` on ``extra['data_root']`` with gauge features on
-    (``configs/model/default.yaml``). ``transform`` applies the learned
-    subject-to-template coupling against the trained template geometry ``B B^T`` —
-    never an unmodified identity when a template exists.
+    (``template.npz`` + ``posterior_samples.npz`` + ``tau_phi.npz``), otherwise calls
+    ``trajot.inference.train.train`` on ``extra['data_root']`` with **scan-rescan
+    calibrated beta** (never the synthetic default when real two-run subjects exist)
+    and gauge features on. ``transform`` applies the learned subject-to-template
+    coupling against the trained template geometry ``B B^T``. ``tau_phi`` is kept on
+    the instance for the Track B uncertainty column.
     """
 
     gauge_features: bool = True
@@ -129,14 +130,25 @@ class OursFull(Baseline):
         self._n_regions: int | None = None
         self._keys: list[bytes] = []
         self._couplings: list[np.ndarray] = []
+        self.tau_phi: list[np.ndarray] | None = None
+        self.beta_target: float | None = None
         self.meta: dict[str, Any] = {
             "algorithm": "ours_hierarchical_couplings",
             "gauge_features": bool(self.gauge_features),
             "device": "cpu",
         }
 
+    @staticmethod
+    def _mean_tau(tau_phi: list[np.ndarray] | None) -> float | None:
+        if not tau_phi:
+            return None
+        vals = [float(np.mean(np.asarray(t, dtype=np.float64))) for t in tau_phi if t is not None]
+        return float(np.mean(vals)) if vals else None
+
     def _load_artifacts(self, run_dir: Path) -> bool:
-        art = Path(run_dir) / "artifacts"
+        art = Path(run_dir)
+        if art.name != "artifacts" and (art / "artifacts").is_dir():
+            art = art / "artifacts"
         template_path = art / "template.npz"
         if not template_path.is_file():
             return False
@@ -157,12 +169,40 @@ class OursFull(Baseline):
                     if key in z.files:
                         pi = np.asarray(z[key], dtype=np.float64)
                         self._pi_means.append(pi.mean(axis=0) if pi.ndim == 3 else pi)
+        tau_path = art / "tau_phi.npz"
+        self.tau_phi = None
+        if tau_path.is_file():
+            with np.load(tau_path) as z:
+                taus = []
+                keys = [f"sub-{sid}" for sid in self._subject_ids if f"sub-{sid}" in z.files]
+                if not keys:
+                    keys = list(z.files)
+                for key in keys:
+                    taus.append(np.asarray(z[key], dtype=np.float64))
+                self.tau_phi = taus or None
+        beta_path = art / "beta.json"
+        self.beta_target = None
+        if beta_path.is_file():
+            try:
+                import json
+
+                payload = json.loads(beta_path.read_text())
+                if "beta" in payload:
+                    self.beta_target = float(payload["beta"])
+            except Exception:
+                self.beta_target = None
         self.meta["source"] = "artifacts"
         self.meta["template_path"] = str(template_path)
+        self.meta["beta_target"] = self.beta_target
+        mean_tau = self._mean_tau(self.tau_phi)
+        if mean_tau is not None:
+            self.meta["tau_phi_mean"] = mean_tau
         return True
 
     def _train_from_root(self, connectomes: np.ndarray, cfg: Any, extra: dict[str, Any]) -> None:
+        from trajot.inference.beta import calibrate_beta
         from trajot.inference.train import load_train_data, train
+        from trajot.io.contract import read_manifest, two_run_subjects
         from trajot.runlog.parallel import pick_device
 
         data_root = extra.get("data_root", cfg_get(cfg, "data.root", None))
@@ -171,9 +211,31 @@ class OursFull(Baseline):
                 f"{self.registry_name}.fit needs extra['run_dir'] with artifacts or "
                 "extra['data_root'] to call trajot.inference.train.train"
             )
+        data_root = Path(data_root)
         nested = _tiny_model_cfg(cfg, gauge=bool(self.gauge_features), R=connectomes.shape[1], extra=extra)
         view = CfgView(nested)
-        data = load_train_data(Path(data_root), view)
+
+        beta_target = extra.get("beta_target")
+        train_subjects = extra.get("subjects")
+        if beta_target is None:
+            # Real-data path: beta comes only from scan-rescan calibration.
+            try:
+                ids = train_subjects
+                if ids is None:
+                    ids = two_run_subjects(read_manifest(data_root), strict=False)
+                if ids:
+                    cal = calibrate_beta(data_root, subjects=list(ids), out_dir=Path(extra["run_dir"]) / "artifacts"
+                                         if extra.get("run_dir") else data_root / "derivatives" / "trajot" / "artifacts")
+                    beta_target = float(cal["beta"])
+                    self.meta["beta_sigma_hat_C_squared"] = float(cal["sigma_hat_C_squared"])
+                    self.meta["beta_n_subjects"] = int(cal["n_subjects"])
+                    self.meta["beta_n_regions"] = int(cal["n_regions"])
+            except Exception as exc:
+                self.meta["beta_calibration_error"] = str(exc)
+                beta_target = None
+
+        data = load_train_data(data_root, view, subjects=list(train_subjects) if train_subjects else None,
+                               beta_target=beta_target)
         device = pick_device(prefer_mps=False)
         result = train(view, data, device)
         self._B = np.asarray(result.params.B, dtype=np.float64)
@@ -184,10 +246,22 @@ class OursFull(Baseline):
         self._pi_means = [
             np.asarray(pi, dtype=np.float64).mean(axis=0) for pi in result.pi_samples
         ]
+        self.tau_phi = [np.asarray(t, dtype=np.float64) for t in result.tau_phi]
+        self.beta_target = float(result.beta_target)
         self._C_bar = _template_connectome(self._B)
         self.meta["source"] = "train"
-        self.meta["beta_target"] = float(result.beta_target)
+        self.meta["beta_target"] = self.beta_target
         self.meta["n_epochs"] = len(result.loss_trace)
+        mean_tau = self._mean_tau(self.tau_phi)
+        if mean_tau is not None:
+            self.meta["tau_phi_mean"] = mean_tau
+        run_dir = extra.get("run_dir")
+        if run_dir:
+            from trajot.inference.train import save_artifacts
+
+            run_path = Path(run_dir)
+            parent = run_path.parent if run_path.name == "artifacts" else run_path
+            save_artifacts(parent, result)
 
     def fit(
         self,
@@ -213,6 +287,7 @@ class OursFull(Baseline):
         self._keys = []
         self._couplings = []
         self._pi_means = []
+        self.tau_phi = None
 
         loaded = False
         run_dir = extra.get("run_dir")
@@ -238,6 +313,8 @@ class OursFull(Baseline):
             K=int(self._B.shape[0]),
             r=int(self._B.shape[1]),
             n_subjects=int(mats.shape[0]),
+            beta_target=self.beta_target,
+            tau_phi_mean=self._mean_tau(self.tau_phi),
         )
         return self
 

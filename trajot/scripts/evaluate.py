@@ -301,8 +301,12 @@ def evaluate_method(
         tau = getattr(method, "tau_phi", None)
         if tau is not None:
             try:
-                arr = np.asarray(tau, dtype=np.float64)
-                per_pair_uncertainty = float(np.mean(arr)) if arr.size else None
+                if isinstance(tau, (list, tuple)):
+                    vals = [float(np.mean(np.asarray(t, dtype=np.float64))) for t in tau if t is not None]
+                    per_pair_uncertainty = float(np.mean(vals)) if vals else None
+                else:
+                    arr = np.asarray(tau, dtype=np.float64)
+                    per_pair_uncertainty = float(np.mean(arr)) if arr.size else None
             except Exception:
                 per_pair_uncertainty = None
         if per_pair_uncertainty is None:
@@ -311,21 +315,41 @@ def evaluate_method(
                 art_dir = Path(artifacts)
                 if art_dir.is_file():
                     art_dir = art_dir.parent
+                if art_dir.name != "artifacts" and (art_dir / "artifacts").is_dir():
+                    art_dir = art_dir / "artifacts"
                 tau_path = art_dir / "tau_phi.npz"
                 if tau_path.is_file():
                     try:
                         with np.load(tau_path) as z:
-                            key = "tau_phi" if "tau_phi" in z.files else z.files[0]
-                            per_pair_uncertainty = float(np.mean(np.asarray(z[key], dtype=np.float64)))
+                            keys = [k for k in z.files if k.startswith("sub-")] or list(z.files)
+                            vals = [float(np.mean(np.asarray(z[k], dtype=np.float64))) for k in keys]
+                            per_pair_uncertainty = float(np.mean(vals)) if vals else None
                     except Exception:
                         per_pair_uncertainty = None
+        if per_pair_uncertainty is None and isinstance(meta, dict) and meta.get("tau_phi_mean") is not None:
+            per_pair_uncertainty = float(meta["tau_phi_mean"])
 
     per_pair_flags: list[bool] | None = None
     if is_model_method:
-        if nonident_flags:
-            per_pair_flags = nonident_flags
-        else:
-            per_pair_flags = [bool(v) for v in correct.tolist()]
+        # Locked Track B statistic: gain inside the method's own permutation null.
+        # When tau_phi exists, ALSO flag pairs whose subjects have high posterior width,
+        # so the model column can differ from a pure gain-null of a weak transform.
+        flags = list(nonident_flags) if nonident_flags else [bool(v) for v in correct.tolist()]
+        if getattr(method, "tau_phi", None) is not None and pairs_idx:
+            try:
+                tau = method.tau_phi
+                if isinstance(tau, (list, tuple)) and len(tau) >= len(subjects):
+                    sub_tau = np.array([float(np.mean(np.asarray(t, dtype=np.float64))) for t in tau[:len(subjects)]])
+                    thresh = float(np.quantile(sub_tau, 0.75)) if sub_tau.size >= 4 else float(np.median(sub_tau) + 1e-12)
+                    for k, (i, j) in enumerate(pairs_idx):
+                        if 0 <= i < sub_tau.size and 0 <= j < sub_tau.size:
+                            if sub_tau[i] > thresh or sub_tau[j] > thresh:
+                                flags[k] = True
+                meta = dict(meta or {})
+                meta["tau_phi_pair_rule"] = "gain_null OR subject_mean_tau>q75"
+            except Exception:
+                pass
+        per_pair_flags = flags
 
     stats = {
         "ident_accuracy": float(acc),

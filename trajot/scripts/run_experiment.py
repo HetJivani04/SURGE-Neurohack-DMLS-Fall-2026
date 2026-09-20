@@ -94,14 +94,29 @@ def _resolve_synthetic(cfg: Config, explicit: bool = False) -> bool:
 
 
 def _beta_from_config_or_artifacts(cfg: Config, run_dir: Path) -> float | None:
-    artifacts = run_dir / "artifacts" / "beta.json"
-    if artifacts.is_file():
-        try:
-            data = json.loads(artifacts.read_text())
-            if "beta" in data:
-                return float(data["beta"])
-        except Exception:
-            pass
+    candidates = [
+        run_dir / "artifacts" / "beta.json",
+        Path(cfg.data_root) / "derivatives" / "trajot" / "artifacts" / "beta.json",
+        Path("artifacts") / "beta.json",
+    ]
+    raw = cfg.get("run.ours_artifacts")
+    if raw:
+        art = Path(str(raw))
+        if art.name != "artifacts":
+            art = art / "artifacts"
+        candidates.insert(0, art / "beta.json")
+    for artifacts in candidates:
+        if artifacts.is_file():
+            try:
+                data = json.loads(artifacts.read_text())
+                if "beta" in data:
+                    return float(data["beta"])
+            except Exception:
+                pass
+    # Prefer calibrated real-data beta over the synthetic constant when present in metrics path.
+    val = cfg.get("model.beta.calibrated")
+    if val is not None:
+        return float(val)
     val = cfg.get("model.beta.synthetic")
     return None if val is None else float(val)
 

@@ -8,7 +8,7 @@
 
 ## Current phase
 
-**Phase 1 — Development (framework code landing; W0–W3 code merged; audit-fix wave in flight)**
+**Phase 2 — Real-data experiments (preprocess 83 two-run subjects, baselines, ours_full/ours_ablated)**
 
 ---
 
@@ -235,3 +235,6 @@ Coordinate status changes in this file; do not invent analysis numbers before ru
 | 2026-09-20 | Agent D | Orchestration + coordination | done on disk | TRACKING paths/gates, results/README, shards comments, gh #2/#4/#5/#6; runners wired to B/C APIs; compare.py live; `tests/scripts` + `test_entrypoint` 42 passed. Remaining suite failures live in baselines/eval/config owned by A/B/C (entropy config key, brainsync/conn_srm unit tests). Full `pytest -q` still long-running on inference/baseline suites — re-check after A/B/C land fixes. |
 | 2026-09-20 | Integration | Audit-fix wave verification | done on disk | **pytest (pre-W4-merge): 298 passed, 2 skipped** (10:39 wall; long train/entropy OK). Entropy: wired pathwise Shannon(pi)+detached projected Hutchinson/SLQ logdet (`model.entropy.weight`, estimator `shannon_pi+hutchinson_slq`); training calls `projected_sinkhorn_logdet` with `subspace_dim=4`, `n_iter=max(10,min(L,20))` — nonzero finite entropy on short synthetic fits. MPS: encoder `sample_torch` promotes via `.cpu().to(dtype=float64)`; no combined `.to(device=..., dtype=float64)`. β: V:=R connectome nodes; `n_regions` in beta.json; formula unchanged. Folds: `default_rng.choice` **without replacement** (`eval.folds.FOLD_PROCEDURE`). METHOD_KEYS includes `null_max`. Gauge/band docs: spatial gradient / band prior — no temporal-velocity claims. evaluate.py `pair_gain` import intact (no NameError). Greps clean. |
 | 2026-09-20 | Integration | W4 merge contract | in progress | Method keys frozen `ours_full`/`ours_ablated` (aliases ok). Baselines write `per_pair_flags=null` + `per_pair_uncertainty=null`. W4 `scripts/compare.py` primary (6×5 PLAN table); Agent D flat CSV → `scripts/compare_flat.py`. Delete 9 macOS `* 2.py` junk after merge. Import METHOD_KEYS from `trajot.eval.metrics` in report/table.py. Fold meta text must say without replacement. |
+| 2026-09-20 | Phase2 lead | Env + preprocess smoke | done | `paths.yaml` data_root=`/Users/anandlo/Surge2026F/ds000243-master`; pot/nibabel/nilearn ok; contract npz validated (100×100, V=5124, T=130). Smoke sub-015/016/017 both runs green (qc_pass). SHA 45d79f8 |
+| 2026-09-20 | Phase2 lead | Synthetic pollution fix | done | `evaluate.py` `_synthetic_via_contract` wrote into real data_root and overwrote manifest; sandboxed to `derivatives/trajot_synthetic` / `TRAJOT_SYNTHETIC_ROOT`. Removed sub-001–008 synthetic npz. SHA 6523ad5 |
+| 2026-09-20 | Phase2 lead | Full two-run preprocess | in progress | Background PID on all 83 two-run IDs (015–068, 092–120), n_jobs=1 (RAM ~2.8 GiB free). Pilot gate: ≥20 complete pairs → beta + baselines + ours; then scale to 83 for final table. Chance=1/83. Method keys: `ours_full`/`ours_ablated`. |

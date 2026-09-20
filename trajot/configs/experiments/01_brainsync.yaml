@@ -29,4 +29,4 @@ eval:
     n: 500
     seed: 2026
   permutations:
-    B: 10000
+    B: 200
