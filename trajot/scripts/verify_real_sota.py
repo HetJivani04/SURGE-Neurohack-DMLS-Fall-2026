@@ -290,10 +290,13 @@ def fit_ours_same_Q(
     data_root: Path,
     region_indices: list[np.ndarray | None],
     transform_mode: str = "posterior_shrink",
+    lambda_source: str | None = None,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, Any], list[np.ndarray], list[float]]:
     """Fit OursFull on run1 artifacts and force same-Q application to both runs."""
     method = get_baseline("ours_full")
     method.transform_mode = str(transform_mode)
+    if lambda_source is not None:
+        method.lambda_source = str(lambda_source)
     extra = {
         "subjects": list(subjects),
         "data_root": str(data_root),
@@ -438,7 +441,11 @@ def tau_gap_columns(
     }
 
 
-def gap_columns_table(gap: dict[str, Any], method_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def gap_columns_table(
+    gap: dict[str, Any],
+    method_rows: list[dict[str, Any]],
+    ours_name: str = "ours_full_posterior_shrink",
+) -> list[dict[str, Any]]:
     by = {r["method"]: r for r in method_rows}
     table = []
     for name, label in [
@@ -446,7 +453,7 @@ def gap_columns_table(gap: dict[str, Any], method_rows: list[dict[str, Any]]) ->
         ("brainsync", "BrainSync (rest)"),
         ("fugw", "FUGW (OT)"),
         ("conn_srm", "conn_srm"),
-        ("ours_full_posterior_shrink", "ours_full_posterior_shrink"),
+        (ours_name, ours_name),
     ]:
         row = by.get(name, {})
         table.append(
@@ -503,7 +510,7 @@ def synthetic_sidecar_note(synth_path: Path | None) -> dict[str, Any]:
 
 
 def verdict_from_stats(stats: dict[str, Any]) -> dict[str, Any]:
-    ours_key = "ours_full_posterior_shrink"
+    ours_key = str(stats.get("ours_key") or "ours_full_posterior_shrink")
     comparisons = stats.get("comparisons") or {}
     ident_flags = []
     rel_flags = []
@@ -550,8 +557,8 @@ def verdict_from_stats(stats: dict[str, Any]) -> dict[str, Any]:
             claim_text = (
                 "Posterior-gated hierarchical alignment improves scan-rescan reliability "
                 "on real ds000243 vs noalign, BrainSync, and FUGW (paired bootstrap "
-                "95% CIs exclude 0 for all three). Identification point estimate is "
-                "higher (0.980 vs 0.959/0.959/0.918) but ident CI touches 0 — trend only."
+                "95% CIs exclude 0 for all three). Identification point estimates are "
+                "in comparisons; claim identification only if its CI excludes 0."
             )
         else:
             claim_text = (
@@ -630,6 +637,12 @@ def main(argv: list[str] | None = None) -> int:
         default="noalign,brainsync,fugw,ours_full_posterior_shrink",
         help="baselines + ours; conn_srm intentionally optional/invalid on gain",
     )
+    parser.add_argument(
+        "--ours-lambda-source",
+        type=str,
+        default="tau",
+        help="lambda_source for ours_full posterior_shrink ('tau' or 'row_entropy')",
+    )
     parser.add_argument("--group-subjects", type=int, default=12)
     parser.add_argument("--fugw-limit", type=int, default=None,
                         help="optional cap on FUGW subject count for runtime")
@@ -704,12 +717,20 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     wanted = {m.strip() for m in args.methods.split(",") if m.strip()}
+    ours_names = [m for m in args.methods.split(",") if m.strip().startswith("ours")]
+    ours_name = ours_names[0] if ours_names else None
+    if len(ours_names) > 1:
+        print(
+            f"WARNING: multiple ours methods requested {ours_names}; running only "
+            f"{ours_name} (rerun with a single ours method per invocation)",
+            flush=True,
+        )
     results: dict[str, dict[str, Any]] = {}
     extras: dict[str, Any] = {}
 
     # --- ours: posterior_shrink with SAME Q on both runs ---
-    if "ours_full_posterior_shrink" in wanted:
-        print("=== ours_full_posterior_shrink (same-Q) ===", flush=True)
+    if ours_name is not None:
+        print(f"=== {ours_name} (same-Q) ===", flush=True)
         t1 = time.time()
         aligned1, aligned2, meta, Qs, lams = fit_ours_same_Q(
             run1,
@@ -720,10 +741,11 @@ def main(argv: list[str] | None = None) -> int:
             data_root=data_root,
             region_indices=region_indices,
             transform_mode="posterior_shrink",
+            lambda_source=args.ours_lambda_source,
         )
         metrics = subject_metrics(aligned1, aligned2, run1, run2, pairs)
-        results["ours_full_posterior_shrink"] = {
-            "method": "ours_full_posterior_shrink",
+        results[ours_name] = {
+            "method": ours_name,
             **{k: v for k, v in metrics.items() if k not in {"ident_correct_mask", "ident_score_matrix"}},
             "meta": {
                 **{k: v for k, v in meta.items() if k not in {"per_subject_transform"}},
@@ -753,8 +775,8 @@ def main(argv: list[str] | None = None) -> int:
                     taus.append(np.asarray(z[k], dtype=np.float64))
         extras["ours_tau_phi"] = taus or None
         print(
-            f"ours done in {time.time()-t1:.1f}s ident={results['ours_full_posterior_shrink']['ident_accuracy']:.4f} "
-            f"rel_after={results['ours_full_posterior_shrink']['scanrescan_corr_after']:.4f} "
+            f"ours done in {time.time()-t1:.1f}s ident={results[ours_name]['ident_accuracy']:.4f} "
+            f"rel_after={results[ours_name]['scanrescan_corr_after']:.4f} "
             f"same_Q={meta.get('same_Q_both_runs')} transform_all_match_r2={meta.get('max_abs_diff_vs_transform_all_run2')}",
             flush=True,
         )
@@ -808,7 +830,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- paired bootstrap comparisons ---
     comparisons: dict[str, Any] = {}
-    if "ours_full_posterior_shrink" in results and extras.get("ours_correct_mask") is not None:
+    if ours_name is not None and ours_name in results and extras.get("ours_correct_mask") is not None:
         for base in ("noalign", "brainsync", "fugw", "conn_srm"):
             if base not in results or results[base].get("status") == "failed":
                 continue
@@ -841,11 +863,11 @@ def main(argv: list[str] | None = None) -> int:
                 "reliability_delta": rel_stats,
                 "ours_reliability_after_vs_raw": rel_vs_raw,
                 "mcnemar_ident": mc,
-                "point_ident_ours": results["ours_full_posterior_shrink"]["ident_accuracy"],
+                "point_ident_ours": results[ours_name]["ident_accuracy"],
                 "point_ident_base": results[base]["ident_accuracy"],
-                "point_rel_ours": results["ours_full_posterior_shrink"]["scanrescan_corr_after"],
+                "point_rel_ours": results[ours_name]["scanrescan_corr_after"],
                 "point_rel_base": results[base]["scanrescan_corr_after"],
-                "point_gain_ours": results["ours_full_posterior_shrink"]["alignment_gain_pairs"],
+                "point_gain_ours": results[ours_name]["alignment_gain_pairs"],
                 "point_gain_base": results[base]["alignment_gain_pairs"],
             }
 
@@ -871,9 +893,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"group: {{'n_eff': {group.get('n_eff') if group else None}, 'error': {group.get('error') if group else None}}}", flush=True)
 
     gap = tau_gap_columns(extras.get("ours_tau_phi"), subjects, group)
-    gap_table = gap_columns_table(gap, list(results.values()))
+    gap_table = gap_columns_table(
+        gap, list(results.values()), ours_name=ours_name or "ours_full_posterior_shrink"
+    )
     synth = synthetic_sidecar_note(DEFAULT_TABLES / "synthetic_gap_results.json")
-    verdict = verdict_from_stats({"comparisons": comparisons})
+    verdict = verdict_from_stats(
+        {"comparisons": comparisons, "ours_key": ours_name or "ours_full_posterior_shrink"}
+    )
 
     # compact method rows (drop bulky arrays already excluded)
     method_rows = []
@@ -904,10 +930,15 @@ def main(argv: list[str] | None = None) -> int:
                     "algorithm",
                     "transform",
                     "transform_mode",
+                    "lambda_source",
                     "posterior_drives_transform",
                     "tau0_auto",
                     "tau0_eff",
+                    "lambda_source",
                     "lambda_mean",
+                    "ent0_eff",
+                    "n_pi_means",
+                    "n_subjects",
                     "tau_phi_mean",
                     "same_Q_both_runs",
                     "transform_all_run2_reuses_run1_maps",
@@ -1008,7 +1039,7 @@ def main(argv: list[str] | None = None) -> int:
         f"- same-Q both runs: {payload['protocol']['same_Q_both_runs']}",
         f"- n_boot: {args.n_boot}",
         "",
-        "## Comparable SOTA (REAL N=49, same Q_s on both runs for ours)",
+        f"## Comparable SOTA (REAL N={len(subjects)}, same Q_s on both runs for ours)",
         "",
         "| method | ident | scan-rescan after | alignment_gain | tau_phi | group_n_eff |",
         "|---|---:|---:|---:|---:|---:|",
@@ -1026,7 +1057,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     md_lines += [
         "",
-        "## Paired bootstrap (10k) — ours_full_posterior_shrink − baseline",
+        f"## Paired bootstrap (10k) — {ours_name or 'ours_full_posterior_shrink'} − baseline",
         "",
         "| baseline | ident_delta | ident 95% CI | reliability_delta | reliability 95% CI | McNemar p |",
         "|---|---:|---|---:|---|---:|",

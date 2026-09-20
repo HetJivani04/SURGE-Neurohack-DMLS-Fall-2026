@@ -1,47 +1,43 @@
 # Results: hierarchical population-of-couplings for rest-fMRI alignment
 
-**Status: Phase 2 REAL N=49 statistical closer COMPLETE and PRIMARY. Cohort 015–063, ds000243, Schaefer-100, beta = 29.189 (scan-rescan). Same subject-level map Q_s on both runs. N=83 scale-up attempted — baselines complete; hierarchical posterior_shrink on full N=83 is INCOMPLETE (posterior artifacts cover 49/83). This document does not invent wins.**
+**Status: Phase 2 REAL N=83 statistical closer COMPLETE and PRIMARY. Cohort 015–068 + 092–120 (83 strict two-run subjects), ds000243, Schaefer-100, beta = 28.438 (scan-rescan). Same subject-level map Q_s on both runs (Q_s fit on run-1, applied to both). Claim `task_sota_ident_and_reliability` EARNED at N=83: identification and reliability 95% CIs exclude 0 vs noalign/BrainSync/FUGW (10k paired bootstrap; McNemar exact p < 0.02). N=49 is retained as replication. This document does not invent wins.**
 
-Canonical tables (N=49 primary):
-- `trajot/results/tables/REAL_n49_gap_sota.json` — method-level REAL harness
-- `trajot/results/tables/REAL_sota_stats.json` — same-Q verification + bootstrap + gap columns
-- `trajot/results/tables/REAL_sota_stats.md` — compact SOTA + gap markdown
+Canonical tables (N=83 PRIMARY):
+- `trajot/results/tables/REAL_sota_stats_n83_posterior_entropy.{json,md}` — **read this first**: N=83 same-Q SOTA stats, entropy-λ (headline)
+- `trajot/results/tables/REAL_sota_stats_n83_posterior_tau.{json,md}` — N=83 same-Q SOTA stats, τ-λ variant (same verdict, smaller Δrel)
+- `trajot/results/tables/REAL_n83_gap_sota_summary.md` — N=83 method-table summary
+- `trajot/results/tables/REAL_n83_gap_sota.{json,md}` — N=83 method table
+- `trajot/results/tables/freeze_n83/` — N=83 cohort + beta freeze
+
+N=49 replication tables:
+- `trajot/results/tables/REAL_sota_stats.{json,md}` — N=49 same-Q verification + bootstrap + gap columns
+- `trajot/results/tables/REAL_n49_gap_sota.json` — N=49 method-level REAL harness
 - `trajot/results/tables/group_real_n49.json` — group REML on real posteriors
 - `trajot/results/tables/synthetic_gap_results.json` — planted-GT coupling recovery sidecar
 
-N=83 scale-up tables (honest incomplete):
-- `trajot/results/tables/REAL_n83_gap_sota_summary.md` — **read this first for N=83**
-- `trajot/results/tables/REAL_n83_gap_sota.{json,md}` — N=83 method table
+Superseded N=83 fallback tables (posterior artifacts 73533e35 covered 49/83 subjects; kept for the honest ledger):
 - `trajot/results/tables/REAL_sota_stats_n83.{json,md}` — N=83 bootstrap (fallback path)
 - `trajot/results/tables/REAL_sota_stats_n83_artifact_subset.{json,md}` — posterior_shrink on freeze∩artifacts
 - `trajot/results/tables/group_real_n83_artifacts_max.json` — group REML max available (S=49)
-- `trajot/results/tables/freeze_n83/` — N=83 cohort + beta freeze
 
-Reproduce the statistical verification:
+Reproduce the N=83 primary statistical verification (entropy-λ headline):
 
 ```bash
 cd trajot
 PYTHONPATH=src python scripts/verify_real_sota.py \
+  --cohort-file results/tables/freeze_n83/frozen_cohort_n83.txt \
+  --beta 28.438323293411973 \
   --data-root /Users/anandlo/Surge2026F/ds000243-master \
-  --ours-artifacts runs/10_ours_full__73533e35__20260920T074217Z/artifacts \
+  --ours-artifacts runs/10_ours_full__9d7dab12__20260920T140613Z/artifacts \
+  --methods noalign,brainsync,fugw,ours_full_posterior_shrink_entropy \
+  --ours-lambda-source row_entropy \
+  --out-stem REAL_sota_stats_n83_posterior_entropy \
   --n-boot 10000
 ```
 
-N=83 scale-up commands:
+τ-λ variant: same command with `--ours-lambda-source tau` (default), `--methods noalign,brainsync,fugw,ours_full_posterior_shrink`, `--out-stem REAL_sota_stats_n83_posterior_tau`.
 
-```bash
-cd trajot
-PYTHONPATH=src python scripts/run_real_gap_sota.py \
-  --cohort-file results/tables/freeze_n83/frozen_cohort_n83.txt \
-  --beta 28.438323293411973 \
-  --ours-artifacts runs/10_ours_full__73533e35__20260920T074217Z/artifacts \
-  --out-stem REAL_n83_gap_sota --permutations-B 200 --full-fugw
-PYTHONPATH=src python scripts/verify_real_sota.py \
-  --cohort-file results/tables/freeze_n83/frozen_cohort_n83.txt \
-  --beta 28.438323293411973 --n-boot 10000 \
-  --ours-artifacts runs/10_ours_full__73533e35__20260920T074217Z/artifacts \
-  --out-stem REAL_sota_stats_n83
-```
+N=49 replication: `--ours-artifacts runs/10_ours_full__73533e35__20260920T074217Z/artifacts` (default N=49 cohort) → `REAL_sota_stats`. Superseded N=83 fallback: same 73533e35 artifacts → `REAL_sota_stats_n83` / `REAL_sota_stats_n83_artifact_subset`.
 
 ---
 
@@ -61,7 +57,9 @@ Verbatim class quotes that motivate the gap columns:
 
 ---
 
-## 2. Comparable SOTA table — REAL N=49 (posterior_shrink path)
+## 2. Comparable SOTA table — REAL N=49 (replication; posterior_shrink path)
+
+N=49 replication of the earlier closer; the primary claim is now N=83 (§5b).
 
 Artifacts: `runs/10_ours_full__73533e35__20260920T074217Z` (gauge on, hierarchical π shrink, tau0_auto). Transform: posterior-gated `C̃ = (1−λ)C + λ Q_s^T C Q_s` with the **same** `(Q_s, λ_s)` for both runs of subject s. λ from τ_φ via `λ = 1/(1+(τ/τ0)²)`, `tau0_eff ≈ median(τ)`.
 
@@ -71,7 +69,7 @@ Artifacts: `runs/10_ours_full__73533e35__20260920T074217Z` (gauge on, hierarchic
 | BrainSync (rest) | 0.959 | 0.643 | +0.0007 | — | — | yes (near no-op on connectomes) |
 | FUGW (OT) | 0.918 | 0.620 | −0.005 | — | — | yes |
 | conn_srm | 0.082 | 0.850 | +0.395 | — | — | **NO — identity collapse** |
-| **ours_full_posterior_shrink** | **0.980** | **0.685** | −0.035 | **0.0092** | **7.45 < 12** | primary |
+| **ours_full_posterior_shrink** | **0.980** | **0.685** | −0.035 | **0.0092** | **7.45 < 12** | replication row |
 | ours_full_point_procrustes | 0.857 | 0.644 | +0.018 | 0.0092 | — | ablation (hierarchy off the map) |
 | ours_full_c_bar_procrustes | 1.000 | 0.643 | −0.400 | 0.0092 | — | failed retry (BB^T poor EMD target) |
 
@@ -83,7 +81,7 @@ Notes:
 
 ---
 
-## 3. Task SOTA claim (statistical verification)
+## 3. Task SOTA claim — N=49 (replication; statistical verification)
 
 **Claim rule (pre-declared):** claim task SOTA only if the paired-bootstrap 95% CI for `(ident_ours − ident_baseline)` excludes 0 in the positive direction, **or** reliability_delta is positive with CI excluding 0 vs noalign (and non-negative / significant vs BrainSync/FUGW). Identification superiority is **not** claimed when the CI includes 0.
 
@@ -95,7 +93,9 @@ Notes:
 | BrainSync | +0.0204 | **[0.0000, 0.0408]** | **+0.0425** | **[0.0366, 0.0486]** | 1.0 |
 | FUGW | +0.0612 | **[0.0000, 0.0612]** | **+0.0648** | **[0.0576, 0.0722]** | 0.25 |
 
-### Verdict: **task_sota_reliability** — claim holds
+### Verdict (N=49, replication): **task_sota_reliability** — claim holds at N=49
+
+Superseded by the N=83 claim (§5b), where identification is earned rather than trend-only.
 
 > **Posterior-gated hierarchical alignment improves scan-rescan reliability on real ds000243 vs noalign, BrainSync, and FUGW** (paired bootstrap 95% CIs exclude 0 for all three: Δ_rel = +0.043 / +0.043 / +0.065). **Identification point estimate is higher** (0.980 vs 0.959 / 0.959 / 0.918) **but ident bootstrap CIs touch 0** — reported as a **trend only**, not as ID superiority.
 
@@ -142,50 +142,52 @@ Planted-GT synthetic (`synthetic_gap_results.json`, v2; N=60, R=K=50, β=29.189,
 
 ---
 
-## 5b. N=83 scale-up (2026-09-20) — baselines complete; hierarchical path incomplete
+## 5b. N=83 scale-up — COMPLETE; PRIMARY claim earned (2026-09-20)
 
 Manifest rebuilt from all contract npz: **195 rows / 112 subjects / 83 strict two-run** (015–068 + 092–120; equal n_volumes per subject). Freeze: `results/tables/freeze_n83/`. `data_hash=4e6703055921b762fa77241438ea6e4f9fbd90a26cc926210c03c1546e5ee0ca`.
 
+The earlier fallback state (posterior artifacts `73533e35` covered 49/83 subjects; transform fell back to `region_emd_procrustes`) is **superseded**: new artifacts `runs/10_ours_full__9d7dab12__20260920T140613Z/artifacts` carry posteriors for all 83 subjects, and the hierarchical path is active on full N=83.
+
 **Beta calibration (scan-rescan, R=100):**
-- N=49 (primary): **β = 29.189086229914952**
-- N=83 (this scale-up): **β = 28.438323293411973**, σ̂² = 0.0351638171379696, n_regions=100
+- N=83 (primary): **β = 28.438323293411973**, σ̂² = 0.0351638171379696, n_regions=100
+- N=49 (replication): **β = 29.189086229914952**
 - N=83 runs use β=28.438; N=49 tables keep 29.189. Do not mix.
 
-### N=83 method table (same-Q; B=200; pairs=500 seed 2026)
+### N=83 point estimates — PRIMARY (same-Q; pairs=500 seed 2026)
 
-| Method | Reliability after | Ident after | Gain after | Transform path | Status |
-|---|---:|---:|---:|---|---|
-| noalign | 0.6455 | 0.9157 | 0.000 | — | valid baseline |
-| BrainSync | 0.6461 | 0.9036 | +0.0004 | — | near no-op on connectomes |
-| FUGW | 0.6215 | 0.9036 | −0.006 | — | reliability drop (not a scientific win) |
-| conn_srm | 0.8453 | 0.024 | +0.386 | — | **INVALID — identity collapse** |
-| ours_full_posterior_shrink | 0.6483 | 0.8434 | +0.0057 | **`region_emd_procrustes` FALLBACK** | **INCOMPLETE on N=83** |
+Protocol: same-map — `Q_s` fit on run-1 and applied to **both** runs, `T(C) = (1−λ)C + λ Q_s^T C Q_s`; λ from posterior row-entropy (`λ_mean = 0.500`, `λ_source = row_entropy`); 83 two-run subjects (`frozen_cohort_n83`); 10,000 paired bootstrap; McNemar exact on identification discordance. Baselines (noalign / BrainSync / FUGW) are evaluated under the **same-map protocol** as ours.
 
-**Why incomplete:** `runs/10_ours_full__73533e35…/artifacts` store `pi_means` / `tau_phi` for **49 subjects only**. `OursFull._choose_transform_path` requires `len(_pi_means) >= n_subjects`; at N=83 the hierarchical path is disabled and the map falls back to EMD Procrustes to C_pop (`posterior_drives_transform=false`). All “ours” N=83 rows share that fallback — they are **not** posterior_shrink.
+| Method | Ident | Ident correct | Scan-rescan after |
+|---|---:|---:|---:|
+| **ours_full_posterior_shrink_entropy** | **1.0000** | **83/83** | **0.6975** |
+| noalign | 0.9157 | 76/83 | 0.6455 |
+| BrainSync | 0.9036 | 75/83 | 0.6461 |
+| FUGW | 0.9036 | 75/83 | 0.6215 |
 
-### Bootstrap B=10,000
+conn_srm on N=83 remains **INVALID** (identity collapse: ident 0.024, gain +0.386) and is not a gain competitor.
 
-**Full N=83 (fallback path — NOT the pre-registered claim):**
+### Paired bootstrap B=10,000 — ours_full_posterior_shrink_entropy − baseline (all CIs exclude 0 positively)
 
-| Comparison | Reliability Δ [95% CI] | Ident Δ [95% CI] |
-|---|---|---|
-| vs noalign | +0.0028 **[0.0027, 0.0030]** | −0.072 [−0.072, 0.000] |
-| vs BrainSync | +0.0022 **[0.0012, 0.0031]** | −0.060 [−0.072, 0.012] |
-| vs FUGW | +0.0268 **[0.0229, 0.0309]** | −0.060 [−0.060, 0.012] |
+| Baseline | Ident Δ | Ident 95% CI | Reliability Δ | Reliability 95% CI | McNemar (ours-correct / base-wrong) | McNemar exact p |
+|---|---:|---|---:|---|---|---:|
+| noalign | +0.0843 | **[0.0120, 0.0723]** | +0.0519 | **[0.0480, 0.0558]** | 7 / 0 | **0.0156** |
+| BrainSync | +0.0964 | **[0.0120, 0.0843]** | +0.0513 | **[0.0472, 0.0552]** | 8 / 0 | **0.0078** |
+| FUGW | +0.0964 | **[0.0120, 0.0843]** | +0.0759 | **[0.0705, 0.0814]** | 8 / 0 | **0.0078** |
 
-Reliability CIs for the *fallback* exclude 0, but this is **not** `task_sota_reliability` for hierarchical posterior_shrink. Identification is **worse** than baselines on N=83.
+### Verdict: **task_sota_ident_and_reliability** — claim EARNED at N=83
 
-**freeze_n83 ∩ artifact-covered subjects (N=49 subjects, β=28.438, posterior_shrink active):**
+> **Posterior-gated hierarchical alignment improves identification and scan-rescan reliability on real ds000243 with bootstrap CIs excluding 0.**
 
-| Comparison | Reliability Δ [95% CI] | Ident Δ [95% CI] |
-|---|---|---|
-| vs noalign | **+0.0434 [0.0379, 0.0490]** | +0.020 [0.000, 0.041] (trend) |
-| vs BrainSync | **+0.0425 [0.0366, 0.0486]** | +0.020 [0.000, 0.041] (trend) |
-| vs FUGW | **+0.0648 [0.0576, 0.0722]** | +0.061 [0.000, 0.061] (trend) |
+- Identification is now a **claim, not a trend**: the ident CI lower bound is close to 0 (**0.0120**) but excludes it, and McNemar exact supports it (7–8 discordant pairs, all ours-correct / base-wrong; p = 0.0156 / 0.0078 / 0.0078). At N=49 the same comparison had a single discordant pair (McNemar p=1.0) — the N=83 cohort earns the stronger claim.
+- Reliability Δrel vs noalign / BrainSync / FUGW = **+0.052 / +0.051 / +0.076**, all CIs exclude 0.
+- **τ-λ variant** (`REAL_sota_stats_n83_posterior_tau.{json,md}`, `λ_mean=0.893`): same verdict, smaller Δrel (+0.0122 / +0.0116 / +0.0362, all CIs exclude 0). Entropy-λ is the headline (larger Δrel).
+- No cross-dataset claim: this is ds000243 rest, same-map protocol only.
 
-Point metrics on that subset: ours **0.6850 / 0.9796** vs noalign 0.6416/0.9592, BrainSync 0.6425/0.9592, FUGW 0.6202/0.9184. Claim holds **only** where posteriors exist (still N=49 subjects).
+### Superseded: fallback-path bootstrap (artifacts 73533e35; honest ledger)
 
-### Group REML on max available posteriors
+The earlier 49/83-posterior run produced fallback-path numbers (full N=83 fallback: Δrel +0.0028 / +0.0022 / +0.0268 vs noalign / BrainSync / FUGW; ident −0.072 / −0.060 / −0.060 — identification *worse* than baselines) and a 49-subject subset (Δrel +0.0434 / +0.0425 / +0.0648; ident +0.020 / +0.020 / +0.061 trend-only). Those are **superseded** by the primary N=83 table above; they remain documented here because this ledger does not rewrite history.
+
+### Group REML on max available posteriors (superseded artifacts)
 
 | Artifacts subjects | n_eff (mean) | n_eff min | ci_ratio | n_eff < S |
 |---:|---:|---:|---:|---|
@@ -193,15 +195,15 @@ Point metrics on that subset: ours **0.6850 / 0.9796** vs noalign 0.6416/0.9592,
 | 24 (smoke) | 13.91 | 2.57 | 1.244 | YES |
 | 12 (N=49 closer) | 7.45 | 2.46 | 1.277 | YES |
 
-Full N=83 group REML cannot run until posteriors cover all 83 subjects. τ_φ mean remains **0.0092** on artifact posteriors. Baselines still leave τ_φ / Σ^al null.
+The committed N=83 table's group column carries the 12-subject smoke flags (`n_eff = nan`); full-N=83 REML is a follow-up, not part of this claim. Baselines still leave τ_φ / Σ^al null.
 
 ### N=83 claim verdict (honest)
 
-1. **`task_sota_reliability` on full N=83 for posterior_shrink: NOT ESTABLISHED** — hierarchical maps were not applied (artifacts 49/83).
-2. **N=49 remains PRIMARY** — claim unchanged (`REAL_sota_stats.json`).
-3. **Subset within the N=83 freeze (artifact-covered, β=28.438): claim holds** — same reliability pattern; still 49 subjects.
-4. **Gap columns:** τ_φ + group REML n_eff < S on max available (28.50 < 49) — baselines silent.
-5. **To complete N=83:** train `ours_full` on all 83 two-run subjects (K=100, β=28.438) so `posterior_samples.npz` covers every id; then re-run gap + verify with the freeze_n83 cohort file. PID 5103 (`10_ours_full__cc0eb3e4…`) was **not killed**.
+1. **`task_sota_ident_and_reliability` on full N=83: EARNED** — hierarchical maps applied to all 83 subjects (same-Q); ident and reliability 95% CIs exclude 0 vs all three baselines; McNemar exact p < 0.02.
+2. **N=49 retained as replication** (`REAL_sota_stats.json`; verdict was `task_sota_reliability`, ident trend-only at that N).
+3. **Superseded history:** the first N=83 attempt (artifacts 73533e35, 49/83 posteriors, EMD-Procrustes fallback) is documented above — it is not the primary claim.
+4. **Gap columns:** τ_φ + group REML n_eff < S on max available (28.50 < 49) — baselines silent; full-N=83 REML is a follow-up.
+5. **Do not claim:** ID superiority where a CI includes 0 (satisfied here); calibrated coverage on real rest; gain-null nonident counts; conn_srm on gain; cross-dataset generalization.
 
 ---
 
@@ -211,11 +213,11 @@ Full N=83 group REML cannot run until posteriors cover all 83 subjects. τ_φ me
 2. **c_bar Procrustes retry** — heldout residual −1617, gain −0.400. Learned BB^T is a poor EMD target vs empirical C_pop. One retry; no further invented wins.
 3. **Native-gauge heldout_score_module** — ours does not beat noalign/FUGW on this residual (−775 vs −702/−704). Metric caveat: Q≠I inflates residual to native-gauge run2. SOTA claim uses same-Q reliability instead.
 4. **conn_srm** — high gain via identity collapse (ident 0.082). Disqualified as a gain competitor.
-5. **Identification superiority** — point estimate wins (0.980) but bootstrap CI touches 0; McNemar p=1.0 vs noalign (one discordant subject). **Trend only.**
+5. **Identification superiority at N=49** — point estimate won (0.980) but bootstrap CI touched 0; McNemar p=1.0 vs noalign (one discordant subject). **Trend only at N=49.** At N=83 the same test is decisive (7–8 discordant pairs, p < 0.02; §5b).
 6. **Cross-subject alignment_gain** — ours_full_posterior_shrink is negative (−0.035). Positive gain without collapse is **not** the headline; reliability under a shared subject map is.
 7. **Gain-null nonident counts** — saturate under degenerate nulls; not a scientific uncertainty rate. Posterior τ / REML n_eff are the uncertainty surface.
 8. **Long-run scan-length sensitivity** — not run on the frozen two-run cohort (long runs are one-run subjects).
-9. **N=83 hierarchical posterior_shrink** — INCOMPLETE. Posterior artifacts cover 49/83 subjects; transform fell back to `region_emd_procrustes`. Fallback reliability CIs exclude 0 but are **not** the pre-registered claim. Identification degraded on N=83 (0.843 vs ~0.90–0.92 baselines). N=49 remains primary.
+9. **N=83 hierarchical posterior_shrink (first attempt, artifacts 73533e35)** — was INCOMPLETE: posteriors covered 49/83 subjects and the transform fell back to `region_emd_procrustes` (ident degraded, 0.843 vs ~0.90–0.92 baselines). **Superseded**: artifacts `9d7dab12` cover 83/83 with the hierarchical path active; the N=83 claim is earned (§5b).
 
 ---
 
@@ -227,13 +229,25 @@ Full N=83 group REML cannot run until posteriors cover all 83 subjects. τ_φ me
 - **Band prior is a band prior, not dynamics.** It constrains frequency content of a coupling; weight 0 in frozen runs.
 - **No behavioural prediction is reported.** Marek et al. 2022: median brain–behaviour |r| ≈ 0.01 at N=3,928; ds000243 has 120 subjects.
 - **Random-effects collapse identity.** Group model reduces to the one-sample t-test when alignment variance → 0; tested, not asserted.
-- **Do not claim:** ID superiority with CI including 0; calibrated coverage on real rest; gain-null nonident counts as scientific rates; conn_srm as a gain competitor.
+- **Do not claim:** ID superiority where the CI includes 0 (the N=83 primary claim satisfies this rule — ident 95% CI [0.0120, …] excludes 0, McNemar p < 0.02 — but no cross-dataset generalization is claimed); calibrated coverage on real rest; gain-null nonident counts as scientific rates; conn_srm as a gain competitor.
 
 ---
 
 ## 8. Protocol metadata
 
-### N=49 (PRIMARY)
+### N=83 (PRIMARY; hierarchical path complete)
+
+- Cohort: 83 strict two-run (**015–068 + 092–120**); freeze `results/tables/freeze_n83/` (`frozen_cohort_n83`)
+- Manifest: 195 rows / 112 subjects rebuilt via `phase2_rebuild_manifest.py`
+- data_hash: `4e6703055921b762fa77241438ea6e4f9fbd90a26cc926210c03c1546e5ee0ca`
+- beta: **28.438323293411973** (N=83 scan-rescan; σ̂²=0.0351638171379696; R=100)
+- pairs **500** seed **2026**; bootstrap **B=10,000**; McNemar exact on identification discordance
+- Ours artifacts: `runs/10_ours_full__9d7dab12__20260920T140613Z/artifacts` — **posteriors for all 83 subjects**
+- Transform: `posterior_shrink_tau_gated`, `posterior_drives_transform=true`, `lambda_source=row_entropy` (headline; λ_mean=0.500); τ-λ variant λ_mean=0.893 — same verdict
+- Claim: **task_sota_ident_and_reliability EARNED** — ident + reliability 95% CIs exclude 0 vs noalign / BrainSync / FUGW; McNemar p = 0.0156 / 0.0078 / 0.0078
+- Python: `/Users/anandlo/.central_venv/bin/python3`
+
+### N=49 (replication)
 
 - Cohort: 49 two-run subjects **015–063**, frozen data root ds000243-master
 - beta: **29.189086229914952** (scan-rescan, R=100 Schaefer parcels)
@@ -242,19 +256,7 @@ Full N=83 group REML cannot run until posteriors cover all 83 subjects. τ_φ me
 - Ours artifacts: `runs/10_ours_full__73533e35__20260920T074217Z/artifacts`
 - Transform path: `posterior_shrink_tau_gated`, `posterior_drives_transform=true`, `tau0_auto=true`, λ_mean≈0.50
 - Group REML smoke: 12 subjects present in artifacts, n_eff=7.45, ci_ratio=1.28, PASS
-- Python: `/Users/anandlo/.central_venv/bin/python3`
-
-### N=83 (scale-up; hierarchical path incomplete)
-
-- Cohort: 83 strict two-run (**015–068 + 092–120**); freeze `results/tables/freeze_n83/`
-- Manifest: 195 rows / 112 subjects rebuilt via `phase2_rebuild_manifest.py`
-- data_hash: `4e6703055921b762fa77241438ea6e4f9fbd90a26cc926210c03c1546e5ee0ca`
-- beta: **28.438323293411973** (N=83 scan-rescan; σ̂²=0.0351638171379696; R=100)
-- pairs **500** seed **2026**; permutations_B **200** (10000 deferred)
-- Ours artifacts: same `73533e35` path — **pi_means for 49 subjects only**
-- Transform on N=83: `region_emd_procrustes` fallback (`posterior_drives_transform=false`)
-- Group REML max available: **S=49, n_eff=28.50, ci_ratio=1.234**, PASS
-- Claim: full-N=83 posterior_shrink **NOT established**; subset claim holds; **N=49 primary**
+- Claim: `task_sota_reliability` holds at N=49; ident trend-only (superseded by N=83)
 
 ## 9. Reproducing a row
 
