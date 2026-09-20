@@ -1,195 +1,161 @@
-# 🧠 Welcome to the Fall 2026 SURGE Neuro Hackathon!
+# TrajOT - knowing when a brain alignment is real
 
-Welcome to the **SURGE Neuro Hack Fall 2026**, where you'll get hands-on experience developing Brain-Computer Interfaces (BCIs) and analyzing neural data. Over the course of this weekend, you'll work in teams to prototype applications using EEG data. 
+**SURGE Neurohack, Fall 2026** · AI & Machine Learning stream
 
-<details>
-<summary>Table of Contents</summary>
-
-## Table of Contents
-
-- [🧠 Welcome to the Fall 2026 SURGE Neuro Hackathon!](#-welcome-to-the-fall-2026-surge-neuro-hackathon)
-  - [Table of Contents](#table-of-contents)
-- [General Information:](#general-information)
-  - [Support \& Collaboration](#support--collaboration)
-  - [Hackathon Schedule](#hackathon-schedule)
-  - [Rules:](#rules)
-- [🏆 Challenge Streams](#-challenge-streams)
-  - [**1️⃣ Brain-Controlled Applications (Real-Time BCI)**](#1️⃣-brain-controlled-applications-real-time-bci)
-    - [Real-Time BCI Deliverables](#real-time-bci-deliverables)
-  - [**2️⃣ AI \& Machine Learning (Offline EEG Data Analysis)**](#2️⃣-ai--machine-learning-offline-eeg-data-analysis)
-    - [Offline EEG Data/ML Deliverables](#offline-eeg-dataml-deliverables)
-  - [**3️⃣ Hardware Hacking (EEG Hardware \& Embedded Systems)**](#3️⃣-hardware-hacking-eeg-hardware--embedded-systems)
-    - [Hardware Hacking Deliverables](#hardware-hacking-deliverables)
-- [📩 Submission Information](#-submission-information)
-    - [Submission Process](#submission-process)
-- [📌 Getting Started](#-getting-started)
-    - [**1️⃣ Clone this Repository**](#1️⃣-clone-this-repository)
-    - [**2️⃣ Install Dependencies**](#2️⃣-install-dependencies)
-    - [**3️⃣ Choose Your Challenge Stream and Get Hacking!**](#3️⃣-choose-your-challenge-stream-and-get-hacking)
-- [Don't know where to start? Check this out!](#dont-know-where-to-start-check-this-out)
-- [Repository Table of Contents](#repository-table-of-contents)
-  - [📂 Neurohack-Fall-2026](#-neurohack-fall-2026)
-    - [📂 getting-setup - Instructions on how to setup python](#-getting-setup---instructions-on-how-to-setup-python)
-    - [📂 real-time-bci-stream – Resources \& starter code for real-time EEG applications](#-real-time-bci-stream--resources--starter-code-for-real-time-eeg-applications)
-    - [📂 offline-analysis-stream – Resources \& starter code for EEG data analysis](#-offline-analysis-stream--resources--starter-code-for-eeg-data-analysis)
-    - [📂 resources – Learning materials and references](#-resources--learning-materials-and-references)
-</details>
-
----
-# General Information:
-
-## Support & Collaboration
-- Join the **#neurohack-fall-2026** channel on the [SURGE Discord server](https://discord.gg/jvkwKfERt) to ask questions, share ideas, and collaborate with other participants.
-- Refer back to the [introduction presentation](https://docs.google.com/presentation/d/1Kv9ZSb0_6BqbbZlZWzYRzQ__WZipsEUCZKcd4CUvxyY/edit?usp=sharing)
-- Reach out directly to me at [mascini.max@dal.ca](mailto:mascini.max@dal.ca)! (Please keep in mind I may be busy helping other teams, so I may not respond immediately)
-
-## Hackathon Schedule
-
-- **Day 1 (Friday 5:00pm-8:00pm):** Introduction to BCI, EEG, and Team Formation
-- **Day 2 (Saturday 9:00am-4:00pm):** Hacking!
-- **Day 3 (Sunday 9:00am-4:00pm):** Project wrap-up & submission, team presentations, and judging!
-  - Submission Deadline: Sunday @ 1:00 PM
-  - Presentations: 2:30 PM - 4:00 PM
-
-## Rules:
-1. You are free to use any hardware or software tools you like, but we recommend using the resources provided in this repository.
-2. You may work in teams of up to 4 people. Individual submissions are also allowed.
-3. All work must be done during the hackathon period (Friday to Sunday).
-4. You must submit your project by the deadline to be eligible for judging.
-5. All team members must be present and speak during the teams' presentation to be eligible for a prize.
-6. You are allowed to - even encouraged to use AI tools (e.g., ChatGPT, GitHub Copilot) to assist with coding, brainstorming, and problem-solving. **However, it is your responsibility to ensure that you understand and can explain all of your work!**
-7. Have fun and be creative!
+**Team TrajOT** - Anand Lo · Het Jivani · Nafisah Nubah · Rafat Hossain · Zawad Atif · Sophie Eruokwu
 
 ---
 
-# 🏆 Challenge Streams
-We have **three challenge tracks** you can choose from:
+## Overview
 
-## **1️⃣ Brain-Controlled Applications (Real-Time BCI)**
-**🎯 Challenge & Goal:** Develop an application where EEG signals **control an interaction or interface** in real time. Use real-time EEG to build a brain-controlled game, assistive tool, interactive experience, or whatever you brainstorm!
+Comparing brain activity across people usually needs a shared timeline — everyone watching the same
+movie, so second 30 means the same thing in every scan. Resting-state fMRI has no such clock, and the
+methods that align it return **one map per subject with no indication of whether that map captured
+anything**. The field documents this about itself:
 
-**Example Ideas:**
-   - A **Mind-controlled game**
-   - A **An EEG-controlled communication device**
-   - A **mind-controlled music device**
+> "In both datasets we analyzed in this study, the results of unsupervised alignment at the individual
+> level were statistically unreliable." — Takeda et al. 2025, *iScience*
 
-### Real-Time BCI Deliverables
+TrajOT is a **hierarchical population-of-couplings model**: a posterior over subject-to-template
+transport plans, with shrinkage toward a population coupling, an inverse temperature calibrated from
+the data's own scan–rescan reliability rather than tuned, and group random-effects inference that
+down-weights subjects whose alignment the data do not determine.
 
-- **Project Presentation** (10 minutes max.) - See the [rubric for details.](./resources/Judging_rubrics.pdf) A general template for your presentation should include:
-  -  Problem Statement & Motivation  
-  - System Design & Implementation 
-  - A live Demonstration (or a pre-recorded demo if real-time is not possible)  
-  - Results & Interpretation (system performance, user interaction)
-  - Challenges & Future Work
-- **Code Repository** (GitHub or Zip file) – Should include: 
-  - Your code, presentation and instructions for running the project (a readme file)
+The posterior is not a side diagnostic — it drives the map. The applied transform is gated by
+posterior row-entropy:
 
-
-## **2️⃣ AI & Machine Learning (Offline EEG Data Analysis)**
-**🎯 Challenge & Goal:** Analyze pre-recorded EEG data to extract insights, perform statistics, classify brain signals/states, or detect anomalies.
-
-**BCI Dataset:** For this stream we have provided three datasets of EEG recordings from participants subjected to various experimental conditions designed to elicit specific neural responses. For more information on the provided dataset, please refer to the [dataset description](./offline-analysis-stream/dataset_description.md).
-- **You may find and use a different, publicly available dataset for your analysis**. However, if you choose to use another dataset, volunteers may not be able to provide as much support.
-
-### Offline EEG Data/ML Deliverables
-
-- **Project Presentation** (10 minutes max.) - see the [rubric for details.](./resources/Judging_rubrics.pdf) A general template for your presentation should include:
-  - Problem Statement & Motivation  
-  - What you did with the data (preprocessing, analysis, modeling) 
-  - Results & Interpretation (accuracy, feature importance, visualization of findings, etc.)  
-  - Challenges & Future Work  
-- **Code Repository** (GitHub or Zip file) – Should include:  
-  - Your code/analyses, presentation and instructions for running the project (a readme file)
-
-## **3️⃣ Hardware Hacking (EEG Hardware & Embedded Systems)**
-**🎯 Challenge & Goal:** Design, build, or modify EEG hardware to improve signal acquisition, create a novel sensing device, or interface custom hardware with a BCI pipeline.
-
-**Example Ideas:**
-   - A **custom EEG electrode array or headset**
-   - A **hardware-accelerated signal processing pipeline**
-   - A **low-cost, DIY EEG amplifier or biosignal interface**
-
-### Hardware Hacking Deliverables
-
-- **Project Presentation** (10 minutes max.) - See the [rubric for details.](./resources/Judging_rubrics.pdf) A general template for your presentation should include:
-  - Problem Statement & Motivation
-  - Hardware Design & Implementation (schematics, components, build process)
-  - A live Demonstration (or a pre-recorded demo)
-  - Results & Interpretation (signal quality, performance benchmarks)
-  - Challenges & Future Work
-- **Code Repository** (GitHub or Zip file) – Should include:
-  - Your code, schematics/CAD files, and a README with build and usage instructions
-
----
-
-# 📩 Submission Information
-
-- **Submission Deadline: Sunday, 1:00 PM**
-- **Judging Format:** A **short presentation** followed by a **5-minute Q&A** session from the judges.
-  - Order of team presentations will be decided at random.
-- **Judging Criteria:** Projects will be evaluated based on the [rubrics provided for each challenge stream.](./resources/Judging_rubrics.pdf)
-- **Prizes:** The top-scoring team will receive $500 to be split among the group equally; 2nd and 3rd place teams will get bragging rights, a great addition to your CV, and sweet SURGE swag prizes!
-
-### Submission Process
-- **How to Submit:**  
-  - Upload your presentation, code, reports, and any other relevant files to your Github repository.
-    - If files are too large, or you don't have a Github repository, you can submit a zip file.
-    - Ensure it includes a *README* explaining about (and how to run/use) your project. 
-  - **[Submit through the submission form](https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=mRm4YH8LLUGSo-F9iunj4H7FrINmspNAj3XHyveOfoJUNEpIMDdMRDVNUDlXVVdQTkpNVDBEMk9QSy4u)**
-- **NOTE:** If you submit multiple times, only your most recent submission made before the submission deadline (1:00 pm on Sunday) will be considered. Submissions received after the deadline will not be accepted.  
-
----
-
-# 📌 Getting Started
-### **1️⃣ Clone this Repository**
-```bash
-git clone https://github.com/SURGE-NeuroTech-Club/Neurohack-Fall-2026.git
-cd <Neurohack-Fall-2026>
+```
+C̃ = (1 − λ) C + λ Qᵀ C Q        λ_s = 1 / (1 + (H_s / H₀)²)
 ```
 
-### **2️⃣ Install Dependencies**
-Navigate to [getting-setup/python_setup.md](./getting-setup/python_setup.md) for instructions on how to setup the provided miniforge `Brainhack` environment.
+where `H_s` is the row-entropy of subject s's posterior coupling, so a subject whose alignment the
+data do not determine is moved less.
 
-Alternatively, If you already have Python 3.12 installed, you will need to ensure you have the following packages installed if you want to run the provided scripts.
+## Results
+
+**N = 83** two-run subjects from ds000243, Schaefer-100, β = 28.438, same map on both runs,
+λ from posterior row-entropy (λ_mean = 0.500). Source tables:
+[`REAL_sota_stats_n83_posterior_entropy.md`](trajot/results/tables/REAL_sota_stats_n83_posterior_entropy.md)
+and [`REAL_n83_gap_sota.md`](trajot/results/tables/REAL_n83_gap_sota.md).
+
+| Method | Identification&nbsp;† | Scan–rescan reliability | Δ reliability (ours − baseline), 95% CI | τ_φ |
+|---|---:|---:|---|---:|
+| No alignment | 0.9157 | 0.6455 | +0.0519 [0.0480, 0.0558] | — |
+| BrainSync | 0.9036 | 0.6461 | +0.0513 [0.0472, 0.0552] | — |
+| FUGW | 0.9036 | 0.6215 | +0.0759 [0.0705, 0.0814] | — |
+| **TrajOT (posterior-gated)** | **1.0000**&nbsp;† | **0.6975** | — | **0.0345** |
+
+† Under a per-subject same-map protocol, identification is map-invariant: fitted, permuted and
+Haar-random maps all score 83/83 (identity 0.9157, single common map 0.9036). The column measures the
+protocol rather than the alignment, so leak-free comparison requires cross-fitted maps.
+
+**`task_sota_reliability`.** Posterior-gated hierarchical alignment improves scan–rescan reliability
+over no-alignment, BrainSync and FUGW; a 10,000-sample paired bootstrap puts all three CIs clear of
+zero. N = 49 (β = 29.189) replicates the same verdict.
+
+**Why λ = 1/2.** The transform acts on `vec(C)` as `M_λ = (1−λ)I + λR` with `R = Qᵀ⊗Qᵀ` orthogonal,
+giving attenuation `|g(θ)|² = 1 − 2λ(1−λ)(1−cos θ)`. Both λ = 0 and λ = 1 are correlation-neutral, so
+λ = 1/2 is the unique maximally-filtering interior point — and the real-data λ-sweep peaks at exactly
+0.50. Map-and-shrink is therefore a spectral denoiser: it passes components invariant under the
+inferred alignment and attenuates rotated, run-specific ones. Energy accounting confirms it — the
+shared component carries 29.9% of its energy in the passband against 19.0% for the run difference.
+Controls isolate the mechanism: Haar-random maps give zero gain, a single common template map recovers
+89% of it, and fitted subject maps add a further +0.006, so the filtering is template-directed.
+
+**Uncertainty columns.** Only the hierarchical model emits a per-subject posterior width
+(τ_φ = 0.0345) and a group REML effective sample size (n_eff = 61.6 < S = 83, ci_ratio 1.15). Every
+baseline returns a map for all 83 subjects and leaves both columns empty.
+
+**Synthetic ground truth.** With a planted correspondence, TrajOT recovers the true coupling at
+**0.70** against 0.03 for point-OT and 0.028 for FUGW. Planted-ambiguous subjects are ranked at
+**AUROC 1.00** by posterior row-entropy, while Sinkhorn τ_φ is inverted on the same plant (AUROC
+0.00) — identifying which posterior functional carries the signal is part of the contribution.
+
+## Data
+
+[OpenNeuro **ds000243**](https://openneuro.org/datasets/ds000243) — 120 subjects, 203 resting runs,
+TR 2.5 s, CC0. Chosen because 83 subjects have two same-day resting runs, which is what makes β
+calibration and held-out-run evaluation possible.
+
 ```bash
-pip install scipy jupyterlab mne brainflow pyserial matplotlib
+aws s3 sync --no-sign-request s3://openneuro.org/ds000243 ./data/ds000243
 ```
 
-For Unity/Pygame-based projects, additional installations may be required.
+Raw data stays local and is never committed. Preprocessing is built in-repo (no fMRIPrep
+derivatives exist for this dataset): slice timing → motion correction → MNI152 affine → fsaverage4
+surface sampling → confound regression → band-pass 0.01–0.1 Hz → Schaefer-100 parcellation. The BIDS
+sidecars carry no `SliceTiming`, so the slice order is recovered from inter-slice phase lags across
+all 203 runs. Details: [`trajot/src/trajot/io/DATASET.md`](trajot/src/trajot/io/DATASET.md).
 
-### **3️⃣ Choose Your Challenge Stream and Get Hacking!**
-Navigate to either:
-- `real-time-bci-stream/` for the interactive applications stream.
-- `offline-analysis-stream/` for the EEG data processing and machine learning stream.
+## Repository layout
 
----
-# Don't know where to start? Check this out!
-Dr. Aaron Newman produced a free online textbook that is a **fantastic place to start** learning about python, EEG signal processing, and brain-computer interfaces. It uses **MNE-Python** — the same library used in the provided example scripts — and covers preprocessing, artifact removal, ERPs, frequency analysis, and more!
-- Full textbook: https://neuraldatascience.io/
-  - Jump straight to python introduction: https://neuraldatascience.io/python/introduction/
-  - Or to the EEG section: https://neuraldatascience.io/eeg/introduction/
----
+```
+trajot/
+├── configs/          experiment, model and eval configs (the unit of comparison)
+├── scripts/          preprocess · fit · evaluate · compare · run_experiment · verify_real_sota
+├── src/trajot/
+│   ├── io/           dataset discovery, preprocessing, the frozen NPZ contract
+│   ├── geometry/     connectivity, diffusion maps, anatomical cost
+│   ├── model/        generative model and ELBO terms
+│   ├── inference/    Sinkhorn posterior, encoder, training, β calibration
+│   ├── baselines/    noalign · brainsync · fugw · conn_srm · ours
+│   ├── eval/         identification, alignment gain, permutation nulls, uncertainty
+│   ├── report/       tables, figures, group REML, sensitivity
+│   └── runlog/       run manifest, registry, structured logging
+├── results/tables/   frozen comparison tables
+└── tests/            461 tests across 41 files
+```
 
-# Repository Table of Contents
-your_repo_name
-## 📂 [Neurohack-Fall-2026](./)
-- 📜 [README.md](./README.md) – Main documentation
+Three design rules hold the project together:
 
-### 📂 [getting-setup](./getting-setup/) - Instructions on how to setup python
-- 📄 [python_setup.md](./getting-setup/python_setup.md) – Instructions on how to setup python
-- 🐍 [brainhack_env.yaml](./getting-setup/brainhack_env.yaml) - Anaconda environment file with python 3.13 to get you started
-- 🐍 [compatibility_brainhack_env.yaml](./getting-setup/compatibility_brainhack_env.yaml) - Anaconda environment file with python 3.10 to get you started
+- **One data contract.** The loader emits a single validated NPZ per subject-run; every downstream
+  module consumes only that, so any module can be replaced without touching the others.
+- **Config is identity.** `run_id = experiment + config hash + timestamp`. Two runs that differ in any
+  resolved parameter cannot be mistaken for each other, and every run is re-runnable from its
+  `manifest.json` alone.
+- **One path for every method.** Baselines and the model share preprocessing, folds and evaluation
+  code. Adding a method is adding a config file, not editing a pipeline.
 
-### 📂 [real-time-bci-stream](./real-time-bci-stream/) – Resources & starter code for real-time EEG applications
-  - 📄 [cyton_setup_instructions.md](./real-time-bci-stream/cyton_setup_instructions.md) – Setup guide
-  - 📂 [example-scripts/](./real-time-bci-stream/example-scripts/) – Starter code for real-time BCI
+## Running it
 
-### 📂 [offline-analysis-stream](./offline-analysis-stream/) – Resources & starter code for EEG data analysis
-  - 📄 [dataset_description.md](./offline-analysis-stream/dataset_description.md) – Information on the dataset
-  - 📂 [sample-data/](./offline-analysis-stream/sample-data/) – Example EEG data
-  - 📂 [example-scripts/](./offline-analysis-stream/example-scripts/) – Starter scripts for EEG analysis
+```bash
+git clone https://github.com/HetJivani04/SURGE-Neurohack-DMLS-Fall-2026.git
+cd SURGE-Neurohack-DMLS-Fall-2026/trajot
+pip install -e .
 
-### 📂 [resources](./resources/) – Learning materials and references
-  - 📄 [bci_basics.md](./resources/bci_basics.md) – Introduction to BCI concepts
-  - 📄 [useful_links.md](./resources/useful_links.md) – Reference materials and links
-  - 📄 [judging_rubrics.pdf](./resources/Judging_rubrics.pdf) – Outline of deliverables for each stream & judging rubrics
+cp configs/paths.example.yaml configs/paths.yaml   # set your local data_root
+python scripts/preprocess.py                       # all 203 runs, resumable
+python scripts/run_experiment.py --config configs/experiments/10_ours_full.yaml
+python scripts/compare.py --experiments all --out reports/results_table.md
+```
+
+Each run writes `runs/<run_id>/` containing `manifest.json` (config, git commit, data hash, seed),
+`metrics.json`, `log.txt` and `artifacts/`, plus a row in `runs/index.csv`.
+
+Everything runs CPU-only in float64 on a 16 GB laptop. Tests: `pytest -q`.
+
+## Key documents
+
+| File | What it holds |
+|---|---|
+| [`trajot/reports/RESULTS.md`](trajot/reports/RESULTS.md) | **Canonical results.** Full tables, protocol metadata and statistics |
+| [`PLAN.md`](PLAN.md) | The research plan — gap, prior work, model, evaluation protocol. §4b states the four gaps and their fixes |
+| [`docs/compose/reports/surge-mathematical-analysis.md`](docs/compose/reports/surge-mathematical-analysis.md) | Root-cause analysis of the identification/alignment tradeoff |
+| [`trajot/src/trajot/io/DATASET.md`](trajot/src/trajot/io/DATASET.md) | Dataset facts and the full preprocessing record |
+| [`trajot/results/tables/REAL_sota_stats_n83_posterior_entropy.md`](trajot/results/tables/REAL_sota_stats_n83_posterior_entropy.md) | **N = 83 SOTA table** — point estimates and 10k paired bootstrap |
+| [`trajot/results/tables/REAL_n83_gap_sota.md`](trajot/results/tables/REAL_n83_gap_sota.md) | N = 83 method table, λ diagnostics and the group REML block |
+| [`trajot/results/tables/REAL_sota_stats.md`](trajot/results/tables/REAL_sota_stats.md) | N = 49 replication |
+
+## Attribution
+
+The components are inherited and attributed precisely: subject-to-template plans with a barycenter
+template from **FUGW** (Thual et al., NeurIPS 2022); the amortized encoder from **ULOT** (Mazelet,
+Flamary & Thirion, NeurIPS 2025); distributions over transport plans from **Mallasto et al.** (ACML
+2021); alignment variance in the group model from **Keller et al.** (*Statistica Sinica* 2008); the
+Gromov–Wasserstein objective from **Mémoli** (*FoCM* 2011) and **Demetci et al.** (AISTATS 2024). The
+contribution is the assembled object — a population distribution over latent alignment couplings with
+shrinkage, on the transport polytope, for cross-subject rest fMRI — which we did not find claimed in
+the sources we checked.
+
+Hackathon starter materials from the organisers are preserved in
+[`Archive/`](Archive/HACKATHON_README.md).
