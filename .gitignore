@@ -186,3 +186,13 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# macOS
+.DS_Store
+
+# results/ is TRACKED — it holds compact outputs shared via git
+# data/ is ignored — raw dataset, each developer has it locally
+# runs/ is ignored — per-developer run directories
+data/
+runs/
+configs/paths.yaml
