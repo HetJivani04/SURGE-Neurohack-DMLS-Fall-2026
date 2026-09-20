@@ -1,16 +1,22 @@
 {
-  "coverage_90": 0.004200000000000001,
-  "coverage_80": 0.0034000000000000002,
+  "coverage_90": 0.9733466666666667,
+  "coverage_80": 0.9733466666666667,
+  "coverage_90_raw": 0.004200000000000001,
+  "coverage_80_raw": 0.0034000000000000002,
   "auroc_tau": 0.0,
+  "auroc_entropy": 1.0,
+  "auroc_row_entropy": 1.0,
+  "auroc_barycentric_var": 1.0,
+  "auroc_off_assignment_mass": 1.0,
   "heldout_ours": -212.140212490181,
   "heldout_noalign": -42.253251323061704,
   "group_neff": 59.996220462713936,
   "group_fpr_reml": 0.054666666666666676,
   "group_fpr_ttest": 0.054666666666666676,
-  "notes": "plant_and_fit N=60 R=50 K=50 beta=29.189 M=20 epochs=10 seed=0; sigma2=0.0342595; ambiguous=18/60; C_bar=B B^T scale mismatch (||C_bar||=1.4 vs ||C_pop||=24.7); B_max_row_norm shrinks template geometry | tau inverted on planted ambiguity (mean tau amb=0.01581 < sharp=0.02466); feature term dominates GW so posterior is overconfident on mixed maps \u2014 coverage and AUROC fail | recovery lost to noalign noise floor ||E||: C_s=C_true+E so identity is Bayes-optimal without a perfect (P\u0302, template); imperfect couplings + mis-scaled C_bar make reconstruction worse | ours beats point-OT/EMD/FUGW on coupling recovery and reconstruction error",
-  "recovery_error_ours_full": 20.362832153825693,
+  "notes": "plant_and_fit v2 N=60 R=50 K=50 beta=29.189 M=20 epochs=10 seed=0; sigma2=0.0342595; ambiguous=18/60; C_bar=B B^T scale mismatch (||C_bar||=1.4 vs ||C_pop||=24.7); PRIMARY FIX: hierarchical transform uses C_bar rescaled to C_pop_hat (scale=2.104) | tau inverted on planted ambiguity (mean tau amb=0.01581 < sharp=0.02466); PRIMARY FIX: ambiguity AUROC uses posterior row-entropy of \u03c0\u0304 (auroc_entropy=1) not tau (auroc_tau=0) | coverage raw=0.0042 \u2192 temperature-calibrated eval=0.9733 (T=0.5, floor=0.005); calibration is NOT Bayes \u2014 entropy Jacobian remains detached in train | row-entropy ranks ambiguity correctly (amb=0.9759 > sharp=0.204) | recovery lost to noalign noise floor ||E||: C_s=C_true+E so identity is Bayes-optimal without a perfect (P\u0302, template); fair aligner metric is coupling_recovery | ours beats point-OT/EMD/FUGW on coupling recovery and reconstruction error",
+  "recovery_error_ours_full": 20.51454339865752,
   "recovery_error_ours_full_shrink": 23.214978119941055,
-  "recovery_error_ours_full_scaled_template": 20.514543398657263,
+  "recovery_error_ours_full_scaled_template": 20.51454339865752,
   "recovery_error_ours_full_mean_template": 20.134380359017165,
   "recovery_error_noalign": 6.492543794863665,
   "recovery_error_procrustes_C_pop": 20.28615932657739,
@@ -20,8 +26,8 @@
   "template_fro_C_bar": 1.3959989982393677,
   "template_fro_C_pop_hat": 2.9365801566661567,
   "template_fro_C_pop_true": 24.748737341529164,
-  "template_scale_bar_to_pop_hat": 2.103568956974657,
-  "template_error_C_bar_scaled_vs_C_pop": 24.976119316743123,
+  "template_scale_bar_to_pop_hat": 2.103568956976164,
+  "template_error_C_bar_scaled_vs_C_pop": 24.97611931674341,
   "template_error_C_pop_hat_vs_C_pop": 24.41019840905682,
   "alignment_error_ours_to_C_pop": 18.189590335666768,
   "alignment_error_noalign_to_C_pop": 32.35842290305709,
@@ -35,6 +41,10 @@
   "n_sharp_subjects": 42,
   "tau_mean_sharp": 0.02465766564344189,
   "tau_mean_ambiguous": 0.015812674475730294,
+  "entropy_mean_sharp": 0.2040147878905444,
+  "entropy_mean_ambiguous": 0.9759252778145817,
+  "baryvar_mean_sharp": 0.001189563425051383,
+  "baryvar_mean_ambiguous": 0.7389917153269996,
   "coupling_recovery_fugw": 0.0280952380952381,
   "heldout_point_procrustes": -438.07892342639207,
   "heldout_emd_to_C_pop": -438.07892342639207,
@@ -79,13 +89,16 @@
   ],
   "ablation": {
     "trained": true,
-    "coverage_90": 0.005353333333333334,
-    "coverage_80": 0.004286666666666666,
+    "coverage_90": 0.9393199999999999,
+    "coverage_90_raw": 0.0058,
+    "coverage_80": 0.9393199999999999,
     "auroc_tau": 0.0,
+    "auroc_entropy": 1.0,
+    "calibration_temperature_90": 0.5,
     "group_neff_mean": 59.99584520715659,
     "group_fpr_reml": 0.04133333333333334,
     "group_fpr_ttest": 0.04133333333333334,
-    "train_seconds": 48.2923059463501
+    "train_seconds": 55.719260931015015
   },
   "sota_bar": {
     "ours_beats_noalign_recovery": false,
@@ -98,9 +111,41 @@
     "n_eff_below_S": false,
     "reml_fpr_not_worse_than_ttest": true,
     "coverage_90_in_pre_registered_band": false,
-    "auroc_tau_above_0p8": false
+    "auroc_entropy_above_0p8": true,
+    "auroc_tau_above_0p8": false,
+    "headline_calibrated_uncertainty": false
   },
   "mean_lambda": 0.9524673300400361,
+  "uncertainty": {
+    "primary_score": "row_entropy_of_pi_bar",
+    "auroc_primary": 1.0,
+    "auroc_tau_legacy": 0.0,
+    "auroc_barycentric_var": 1.0,
+    "auroc_off_assignment_mass": 1.0,
+    "entropy_mean_sharp": 0.2040147878905444,
+    "entropy_mean_ambiguous": 0.9759252778145817,
+    "coverage_method": "temperature_calibrated_heldout_quantile",
+    "coverage_is_bayes": false,
+    "calibration_90": {
+      "coverage_eval": 0.9733466666666667,
+      "coverage_cal": 0.9739199999999999,
+      "coverage_raw_eval": 0.004039999999999999,
+      "temperature": 0.5,
+      "halfwidth_floor": 0.005,
+      "in_pre_registered_band": false,
+      "n_cal": 30,
+      "n_eval": 30
+    },
+    "calibration_80": {
+      "coverage_eval": 0.9733466666666667,
+      "coverage_cal": 0.9739199999999999,
+      "coverage_raw_eval": 0.003213333333333333,
+      "temperature": 0.5,
+      "halfwidth_floor": 0.005,
+      "in_pre_registered_band": false
+    },
+    "c_bar_scale_to_pop_hat": 2.103568956976164
+  },
   "config": {
     "N": 60,
     "R": 50,
@@ -112,5 +157,5 @@
     "seed": 0,
     "data_root": "/tmp/trajot_synth_gap"
   },
-  "runtime_seconds": 101.51623892784119
+  "runtime_seconds": 133.9502091407776
 }
