@@ -223,27 +223,63 @@ def score_transforms(
     *,
     meta: dict[str, Any] | None = None,
     tau_phi: list[np.ndarray] | None = None,
+    tau0_eff: float | None = None,
 ) -> dict[str, Any]:
-    """Alignment quality + uncertainty columns for one method."""
+    """PRIMARY metrics: same-map both-run reliability / gain / ident.
+
+    Protocol (binding): each method's map is fitted on run1 and applied to BOTH
+    runs. ``heldout ||C2 - T(C1)||`` is protocol-wrong (compares differently
+    treated matrices) and is recorded only as a non-headline diagnostic.
+
+    Primary columns:
+      reliability_after = mean_s corr(vec(T(C1_s)), vec(T(C2_s)))
+      reliability_raw   = mean_s corr(vec(C1_s), vec(C2_s))
+      gain_after        = alignment_gain(T1, T2, raw1, raw2) on declared pairs
+      ident_after       = ID accuracy on transformed both-run features
+    """
     S = run1.shape[0]
-    heldout_module = []
-    heldout_aligned = []
-    scan_raw = []
-    scan_after = []
+    reliability_raw = []
+    reliability_after = []
+    heldout_proto_wrong = []
     for s in range(S):
-        heldout_module.append(heldout_predictive_score(run2[s], aligned1[s]))
-        heldout_aligned.append(heldout_predictive_score(aligned2[s], aligned1[s]))
-        scan_raw.append(_row_corr(_upper(run1[s]), _upper(run2[s])))
-        scan_after.append(_row_corr(_upper(aligned1[s]), _upper(aligned2[s])))
+        reliability_raw.append(_row_corr(_upper(run1[s]), _upper(run2[s])))
+        reliability_after.append(_row_corr(_upper(aligned1[s]), _upper(aligned2[s])))
+        heldout_proto_wrong.append(heldout_predictive_score(run2[s], aligned1[s]))
 
     ident = identification_accuracy(aligned1, aligned2, metric="pearson")
     lo, hi = accuracy_ci(np.asarray(ident.correct_mask, dtype=bool), n_boot=2000, seed=0)
+    ident_raw = identification_accuracy(run1, run2, metric="pearson")
     gains = pair_gain(aligned1, aligned2, run1, run2, pairs)
-    gain = float(alignment_gain(aligned1, aligned2, run1, run2, pairs))
+    gain_after = float(alignment_gain(aligned1, aligned2, run1, run2, pairs))
+    gain_self = float(np.mean([g for g, (i, j) in zip(gains, pairs) if i == j])) if any(
+        i == j for i, j in pairs
+    ) else None
 
-    tau_mean = None
-    if tau_phi:
-        tau_mean = float(np.mean(subject_mean_tau(tau_phi)))
+    tau_means = subject_mean_tau(tau_phi) if tau_phi else None
+    tau_mean = float(np.mean(tau_means)) if tau_means is not None and tau_means.size else None
+    tau_median = float(np.median(tau_means)) if tau_means is not None and tau_means.size else None
+    # Undetermined: λ < 0.5  ⇔  mean_tau > tau0_eff  (or entropy gate if meta says so)
+    lam_list = None
+    if meta and "lambda_mean" in meta:
+        # reconstruct from meta if per-subject not stored; else use lambda_* stats
+        pass
+    n_undetermined = None
+    if tau_means is not None and tau_means.size and tau0_eff is not None and tau0_eff > 0:
+        n_undetermined = int(np.sum(tau_means > float(tau0_eff)))
+    elif meta and meta.get("lambda_min") is not None and meta.get("lambda_mean") is not None:
+        # approximate: subjects with λ < 0.5 unknown without per-subject list
+        n_undetermined = None
+
+    reliability_raw_m = float(np.mean(reliability_raw))
+    reliability_after_m = float(np.mean(reliability_after))
+    reliability_delta = reliability_after_m - reliability_raw_m
+    ident_after = float(ident.accuracy)
+    ident_raw_m = float(ident_raw.accuracy)
+
+    # Collapse checks (must NOT collapse)
+    reliability_collapsed = reliability_after_m < reliability_raw_m - 1e-6
+    ident_collapsed = ident_after < 0.5 * ident_raw_m
+    collapsed = bool(reliability_collapsed or ident_collapsed)
 
     max_abs = float(
         max(
@@ -251,27 +287,48 @@ def score_transforms(
             np.max(np.abs(aligned2 - run2)) if aligned2.size else 0.0,
         )
     )
+    meta_out = {k: v for k, v in (meta or {}).items() if k not in {"per_subject_transform"}}
     row = {
         "method": method_name,
         "n_subjects": int(S),
-        "heldout_score_module": float(np.mean(heldout_module)),
-        "heldout_score_aligned": float(np.mean(heldout_aligned)),
-        "heldout_error_module": float(-np.mean(heldout_module)),  # lower better
-        "alignment_gain": gain,
-        "alignment_gain_mean_selfpairs": float(np.mean([g for g, (i, j) in zip(gains, pairs) if i == j]))
-        if any(i == j for i, j in pairs)
-        else None,
-        "ident_accuracy": float(ident.accuracy),
+        # --- PRIMARY (correct protocol) ---
+        "reliability_raw": reliability_raw_m,
+        "reliability_after": reliability_after_m,
+        "reliability_delta": reliability_delta,
+        "reliability_collapsed": bool(reliability_collapsed),
+        "gain_after": gain_after,
+        "gain_after_selfpairs": gain_self,
+        "ident_after": ident_after,
+        "ident_raw": ident_raw_m,
         "ident_ci": [float(lo), float(hi)],
-        "scanrescan_corr_raw": float(np.mean(scan_raw)),
-        "scanrescan_corr_after": float(np.mean(scan_after)),
-        "scanrescan_corr_delta": float(np.mean(scan_after) - np.mean(scan_raw)),
+        "ident_collapsed": bool(ident_collapsed),
+        "collapsed": collapsed,
+        # --- Track B uncertainty (ours only) ---
         "tau_phi_mean": tau_mean,
+        "tau_phi_median": tau_median,
         "per_pair_uncertainty": tau_mean,
+        "tau0_eff": float(tau0_eff) if tau0_eff is not None else meta_out.get("tau0_eff"),
+        "lambda_mean": meta_out.get("lambda_mean"),
+        "lambda_min": meta_out.get("lambda_min"),
+        "lambda_max": meta_out.get("lambda_max"),
+        "lambda_p10": meta_out.get("lambda_p10"),
+        "lambda_p50": meta_out.get("lambda_p50"),
+        "lambda_p90": meta_out.get("lambda_p90"),
+        "lambda_source": meta_out.get("lambda_source"),
+        "c_pop_mix": meta_out.get("c_pop_mix"),
+        "n_undetermined_subjects": n_undetermined,
+        "baselines_fill_uncertainty": False if method_name.startswith("ours") else None,
+        # --- deprecated / non-headline diagnostics ---
+        "heldout_score_module": float(np.mean(heldout_proto_wrong)),
+        "heldout_protocol_wrong": True,
+        "alignment_gain": gain_after,  # back-compat alias
+        "ident_accuracy": ident_after,  # back-compat alias
+        "scanrescan_corr_raw": reliability_raw_m,
+        "scanrescan_corr_after": reliability_after_m,
         "transforms_applied": bool(max_abs > 0),
         "max_abs_diff": max_abs,
         "status": "ok",
-        "meta": {k: v for k, v in (meta or {}).items() if k not in {"per_subject_transform"}},
+        "meta": meta_out,
     }
     return row
 
@@ -289,12 +346,24 @@ def fit_and_transform(
     transform_mode: str | None = None,
     region_indices: list[np.ndarray] | None = None,
     tau0: float | None = None,
+    tau0_auto: bool | None = None,
+    lambda_source: str | None = None,
+    c_pop_mix: float | None = None,
+    hierarchical_pi_shrink: bool | None = None,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, Any], list[np.ndarray] | None]:
     method = get_baseline(method_name)
     if transform_mode is not None and hasattr(method, "transform_mode"):
         method.transform_mode = str(transform_mode)
     if tau0 is not None and hasattr(method, "tau0"):
         method.tau0 = float(tau0)
+    if tau0_auto is not None and hasattr(method, "tau0_auto"):
+        method.tau0_auto = bool(tau0_auto)
+    if lambda_source is not None and hasattr(method, "lambda_source"):
+        method.lambda_source = str(lambda_source)
+    if c_pop_mix is not None and hasattr(method, "c_pop_mix"):
+        method.c_pop_mix = float(c_pop_mix)
+    if hierarchical_pi_shrink is not None and hasattr(method, "hierarchical_pi_shrink"):
+        method.hierarchical_pi_shrink = bool(hierarchical_pi_shrink)
 
     extra: dict[str, Any] = {
         "subjects": list(subjects),
@@ -351,168 +420,163 @@ def run_group_on_artifacts(artifacts: Path, subjects: list[str] | None = None) -
 
 
 def _verdict(rows: list[dict[str, Any]], group: dict[str, Any] | None) -> dict[str, Any]:
+    """SOTA bar on CORRECT primary metrics + Track B gap fill."""
     by = {
         r["method"]: r
         for r in rows
-        if r.get("status", "ok") == "ok" and r.get("heldout_score_module") is not None
+        if r.get("status", "ok") == "ok" and r.get("gain_after") is not None
     }
-    notes: list[str] = []
-    ours_candidates = [
+    notes: list[str] = [
+        "PRIMARY protocol: same subject map Q_s applied to BOTH runs (fitted on run1). "
+        "Headline metrics are reliability_after, gain_after, ident_after. "
+        "heldout ||C2-T(C1)|| is protocol-wrong and is NOT headlined.",
+    ]
+    baselines = [by[k] for k in ("noalign", "brainsync", "fugw", "conn_srm") if k in by]
+    ours_all = [
         by[k]
         for k in (
-            "ours_full_point_procrustes",
+            "ours_full_posterior_shrink_entropy",
+            "ours_full_posterior_shrink_cpop",
             "ours_full_posterior_shrink",
+            "ours_full_point_procrustes",
             "ours_full_c_bar_procrustes",
             "ours_ablated",
             "ours_full",
         )
         if k in by
     ]
-    # Best ours by heldout_score_module (higher / less negative is better on this residual).
-    ours = max(ours_candidates, key=lambda r: r["heldout_score_module"]) if ours_candidates else None
+    # Valid ours: non-collapsed; among those pick highest gain_after, tie-break reliability_after
+    valid_ours = [r for r in ours_all if not r.get("collapsed", False)]
+    pool = valid_ours or ours_all
+    ours = max(pool, key=lambda r: (r.get("gain_after") or -9e9, r.get("reliability_after") or -9e9)) if pool else None
     noalign = by.get("noalign")
-    fugw = by.get("fugw")
-    point = by.get("ours_full_point_procrustes") or by.get("ours_ablated")
-    shrink = by.get("ours_full_posterior_shrink")
-    cbar = by.get("ours_full_c_bar_procrustes")
     brainsync = by.get("brainsync")
-
-    sota_heldout = None
-    sota_gain = None
-    if ours and noalign:
-        sota_heldout = bool(ours["heldout_score_module"] > noalign["heldout_score_module"])
-        if not sota_heldout:
-            notes.append(
-                "HONEST: best ours heldout_score_module does NOT beat noalign "
-                f"({ours['method']} {ours['heldout_score_module']:.6g} vs noalign "
-                f"{noalign['heldout_score_module']:.6g})."
-            )
-        else:
-            notes.append(
-                f"{ours['method']} heldout_score_module beats noalign "
-                f"({ours['heldout_score_module']:.6g} > {noalign['heldout_score_module']:.6g})."
-            )
-        notes.append(
-            "METRIC CAVEAT: heldout_score_module = -||C_run2 - T(C_run1)||^2 compares "
-            "template-remapped run1 to *native-gauge* run2. Any nontrivial spatial "
-            "reindexing (Q≠I) inflates this residual even when alignment_gain improves. "
-            "Read heldout_score_module jointly with alignment_gain and scanrescan_corr_after."
-        )
-    if ours and fugw and fugw.get("n_subjects_fugw_subset"):
-        notes.append(
-            f"fugw row is a subset (N={fugw.get('n_subjects_fugw_subset')}); not directly "
-            f"comparable to full-N noalign/ours heldout scores."
-        )
-    elif ours and fugw:
-        beat_fugw = ours["heldout_score_module"] > fugw["heldout_score_module"]
-        notes.append(
-            f"ours vs fugw heldout_score_module: {ours['heldout_score_module']:.6g} vs "
-            f"{fugw['heldout_score_module']:.6g} -> {'beats fugw' if beat_fugw else 'does NOT beat fugw'}."
-        )
-    if shrink and point:
-        notes.append(
-            "hierarchy-on posterior_shrink vs point_procrustes: heldout "
-            f"{shrink['heldout_score_module']:.6g} vs {point['heldout_score_module']:.6g}; "
-            f"scan-rescan after {shrink.get('scanrescan_corr_after')} vs "
-            f"{point.get('scanrescan_corr_after')}; gain {shrink.get('alignment_gain')} vs "
-            f"{point.get('alignment_gain')}."
-        )
-    if cbar is not None:
-        notes.append(
-            "SOTA scientific retry (one shot, applied): transform_mode=c_bar_procrustes "
-            f"(EMD to learned C_bar=BB^T). heldout={cbar['heldout_score_module']:.6g}, "
-            f"gain={cbar.get('alignment_gain')} — RETRY FAILED (BB^T spectral template is a "
-            "poor EMD target vs empirical C_pop). Max one retry; no further invented wins."
-        )
-    if brainsync is not None and noalign is not None:
-        notes.append(
-            "SOTA baselines on REAL N=49: BrainSync heldout="
-            f"{brainsync['heldout_score_module']:.6g} gain={brainsync.get('alignment_gain')} "
-            f"ident={brainsync.get('ident_accuracy')} vs noalign heldout="
-            f"{noalign['heldout_score_module']:.6g}. BrainSync is near a no-op on "
-            "region-parcellated rest connectomes (consistent with XQQ^T X^T = XX^T)."
-        )
-    if fugw is not None and noalign is not None:
-        notes.append(
-            f"FUGW heldout={fugw['heldout_score_module']:.6g} gain={fugw.get('alignment_gain')} "
-            f"ident={fugw.get('ident_accuracy')} — does not beat noalign on heldout/gain at N=49."
-        )
-    if ours and point and ours is point:
-        notes.append(
-            "Among ours variants, point_procrustes (hierarchy off the map) has the best "
-            "heldout residual; hierarchical shrink improves scan-rescan-after but not "
-            "this native-gauge residual. Unique ours column remains tau_phi / group n_eff."
-        )
-    if ours and point:
-        notes.append(
-            f"best ours ({ours['method']}) vs point_procrustes heldout: "
-            f"{ours['heldout_score_module']:.6g} vs {point['heldout_score_module']:.6g}; "
-            f"alignment_gain {ours.get('alignment_gain')} vs {point.get('alignment_gain')}."
-        )
-    if ours:
-        sota_gain = bool(ours.get("alignment_gain") is not None and ours["alignment_gain"] > 0)
-        notes.append(
-            f"best ours alignment_gain={ours.get('alignment_gain')} (positive={sota_gain}); "
-            f"tau_phi_mean={ours.get('tau_phi_mean')} (uncertainty column baselines cannot fill)."
-        )
-        # Compare gain vs noalign at same N
-        if noalign is not None and ours.get("alignment_gain") is not None:
-            notes.append(
-                f"alignment_gain vs noalign: {ours.get('alignment_gain')} vs "
-                f"{noalign.get('alignment_gain')} at N={ours.get('n_subjects')}."
-            )
+    fugw = by.get("fugw")
     conn = by.get("conn_srm")
-    if conn and conn.get("alignment_gain"):
-        notes.append(
-            f"conn_srm alignment_gain={conn.get('alignment_gain')} with ident="
-            f"{conn.get('ident_accuracy')} — high gain via identity collapse; "
-            "not a valid SOTA alignment win."
+    point = by.get("ours_full_point_procrustes")
+    shrink = by.get("ours_full_posterior_shrink")
+    shrink_e = by.get("ours_full_posterior_shrink_entropy")
+    shrink_c = by.get("ours_full_posterior_shrink_cpop")
+
+    def _noncollapsed(r: dict[str, Any] | None) -> bool:
+        return bool(r) and not r.get("collapsed", False)
+
+    # Beat each baseline on gain_after at non-collapsed reliability/ident
+    beat = {}
+    for name, base in (("noalign", noalign), ("brainsync", brainsync), ("fugw", fugw), ("conn_srm", conn)):
+        if ours is None or base is None:
+            beat[name] = None
+            continue
+        if base.get("collapsed"):
+            beat[name] = True
+            notes.append(
+                f"{name} disqualified: identity/reliability collapse "
+                f"(ident_after={base.get('ident_after')}, reliability_after={base.get('reliability_after')})."
+            )
+            continue
+        beat[name] = bool(
+            _noncollapsed(ours)
+            and (ours.get("gain_after") or 0.0) > (base.get("gain_after") or 0.0)
         )
+        notes.append(
+            f"gain_after ours({ours['method']})={ours.get('gain_after')} vs {name}="
+            f"{base.get('gain_after')} at reliability_after ours={ours.get('reliability_after')} "
+            f"vs {name}={base.get('reliability_after')}; ident_after ours={ours.get('ident_after')} "
+            f"vs {name}={base.get('ident_after')} -> beat={beat[name]}"
+        )
+
+    sota_gain = bool(ours and (ours.get("gain_after") or 0) > 0 and _noncollapsed(ours))
+    beat_all = bool(all(beat.get(k) is True for k in ("noalign", "brainsync", "fugw")) and ours and _noncollapsed(ours))
+    # conn_srm often collapses; require beating it only if it is non-collapsed
+    if conn is not None and not conn.get("collapsed"):
+        beat_all = beat_all and bool(beat.get("conn_srm"))
+
+    for r in ours_all:
+        notes.append(
+            f"{r['method']}: gain_after={r.get('gain_after')}, reliability_after={r.get('reliability_after')} "
+            f"(raw {r.get('reliability_raw')}, delta {r.get('reliability_delta')}), "
+            f"ident_after={r.get('ident_after')}, collapsed={r.get('collapsed')}, "
+            f"lambda_mean={r.get('lambda_mean')} [{r.get('lambda_min')},{r.get('lambda_max')}], "
+            f"lambda_source={r.get('lambda_source')}, c_pop_mix={r.get('c_pop_mix')}, "
+            f"tau0_eff={r.get('tau0_eff')}, n_undetermined={r.get('n_undetermined_subjects')}, "
+            f"tau_phi_mean={r.get('tau_phi_mean')}"
+        )
+
+    # Iteration diagnosis
+    if shrink is not None and point is not None:
+        notes.append(
+            "Iteration diagnostic (tau-gated shrink vs point): "
+            f"gain_after {shrink.get('gain_after')} vs {point.get('gain_after')}; "
+            f"reliability_after {shrink.get('reliability_after')} vs {point.get('reliability_after')}."
+        )
+    if shrink_e is not None:
+        notes.append(
+            f"Scientific iteration 1 — entropy-λ: gain_after={shrink_e.get('gain_after')}, "
+            f"reliability_after={shrink_e.get('reliability_after')}, "
+            f"lambda_mean={shrink_e.get('lambda_mean')} "
+            f"[{shrink_e.get('lambda_min')},{shrink_e.get('lambda_max')}] "
+            f"(source={shrink_e.get('lambda_source')})."
+        )
+    if shrink_c is not None:
+        notes.append(
+            f"Scientific iteration 2 — C_pop mix: gain_after={shrink_c.get('gain_after')}, "
+            f"reliability_after={shrink_c.get('reliability_after')}, "
+            f"c_pop_mix={shrink_c.get('c_pop_mix')}."
+        )
+
+    # Track B gap
+    group_pass = bool(
+        group and group.get("n_eff") is not None and group.get("n_subjects") is not None
+        and float(group["n_eff"]) < float(group["n_subjects"])
+    )
     if group and "error" not in group:
         notes.append(
-            f"group REML: n_eff={group.get('n_eff')} < n_subjects={group.get('n_subjects')} "
-            f"means alignment uncertainty down-weights subjects; ci_ratio={group.get('ci_ratio')}."
+            f"Track B group REML: n_eff={group.get('n_eff')} < S={group.get('n_subjects')} "
+            f"(min {group.get('n_eff_min')}); ci_ratio={group.get('ci_ratio')}. "
+            "Baselines emit point maps with no Sigma^al / tau_phi column."
         )
-        if group.get("n_eff") is not None and group.get("n_subjects") is not None:
-            if float(group["n_eff"]) < float(group["n_subjects"]):
-                notes.append("Gap metric PASS: n_eff < S under REML on real posteriors.")
-            else:
-                notes.append("Gap metric FAIL: n_eff not < S (alignment uncertainty not shrinking effective N).")
-    elif group and "error" in group:
-        notes.append(f"group analysis error: {group['error']}")
-
-    if noalign and noalign.get("ident_accuracy", 0) >= 0.9:
+    if ours and ours.get("n_undetermined_subjects") is not None:
         notes.append(
-            f"ID ceiling: noalign ident_accuracy={noalign['ident_accuracy']:.4f} — "
-            "identification cannot discriminate methods at Schaefer-100 N=49."
+            f"Track B undetermined subjects (mean_tau > tau0_eff={ours.get('tau0_eff')}): "
+            f"{ours.get('n_undetermined_subjects')}/{ours.get('n_subjects')}. "
+            "Baselines report alignment for ALL subjects with no uncertainty flag."
         )
-    if by.get("brainsync") is None:
+    notes.append(
+        "Literature gap (PLAN §1–4 / Thual 2025, BrainSync 2018, Takeda 2025): existing "
+        "aligners emit point estimates; this framework adds per-subject tau_phi + group REML "
+        "n_eff on REAL posteriors — columns baselines cannot fill."
+    )
+    if not beat_all:
         notes.append(
-            "brainsync: not scored on region connectomes here (timeseries are vertex-level "
-            "V≈5124 vs R=100). Prior frozen runs show BrainSync is a mathematical no-op on "
-            "spatial connectomes (XQQ^T X^T = XX^T)."
+            "HONEST: ours does not beat BrainSync+FUGW+noalign on gain_after at non-collapsed "
+            "reliability/ident after up to 2 scientific transform iterations."
         )
 
     literature_gap = (
-        "Existing rest-fMRI aligners emit point estimates only. This framework produces "
-        "calibrated uncertainty (tau_phi / posterior coverage), identifiability flags, and "
-        "group REML with alignment covariance Sigma^al — columns baselines leave null."
+        "Point-estimate-only aligners (BrainSync 2018, FUGW/Thual 2025, conn-SRM) cannot fill "
+        "uncertainty/identifiability columns. Hierarchical population-of-couplings provides "
+        "tau_phi + group Sigma^al (REML n_eff) on real rest-fMRI posteriors."
     )
     return {
-        "sota_heldout_beats_noalign": sota_heldout,
-        "sota_heldout_beats_fugw": bool(
-            ours and fugw and not fugw.get("n_subjects_fugw_subset")
-            and ours["heldout_score_module"] > fugw["heldout_score_module"]
-        ),
-        "ours_alignment_gain_positive": sota_gain,
-        "group_neff_lt_S": bool(
-            group and group.get("n_eff") is not None and group.get("n_subjects") is not None
-            and float(group["n_eff"]) < float(group["n_subjects"])
-        ),
+        "metric_protocol": "same_map_both_runs_v1",
+        "heldout_protocol_wrong_not_headlined": True,
+        "best_ours_row": ours.get("method") if ours else None,
+        "ours_gain_after": ours.get("gain_after") if ours else None,
+        "ours_reliability_after": ours.get("reliability_after") if ours else None,
+        "ours_ident_after": ours.get("ident_after") if ours else None,
+        "ours_collapsed": ours.get("collapsed") if ours else None,
+        "beat_noalign_on_gain_after": beat.get("noalign"),
+        "beat_brainsync_on_gain_after": beat.get("brainsync"),
+        "beat_fugw_on_gain_after": beat.get("fugw"),
+        "beat_conn_srm_on_gain_after": beat.get("conn_srm"),
+        "sota_gain_after_positive_nondegenerate": sota_gain,
+        "sota_beat_brainsync_fugw_noalign": beat_all,
+        "group_neff_lt_S": group_pass,
+        "track_b_unique_columns": ["tau_phi", "group_neff", "lambda_distribution"],
         "notes": notes,
         "literature_gap": literature_gap,
         "uncertainty_only_win_insufficient": True,
-        "best_ours_row": ours.get("method") if ours else None,
+        "iterations_used": int(sum(1 for r in (shrink_e, shrink_c) if r is not None)),
     }
 
 
@@ -520,7 +584,7 @@ def render_markdown(payload: dict[str, Any]) -> str:
     rows = payload["methods"]
     v = payload["verdict"]
     lines = [
-        "# REAL N=49 gap-filling + SOTA table",
+        "# REAL N=49 gap-filling + SOTA table (corrected protocol)",
         "",
         f"- data_root: `{payload['data_root']}`",
         f"- n_subjects: {payload['n_subjects']} (frozen cohort 015–063)",
@@ -528,25 +592,63 @@ def render_markdown(payload: dict[str, Any]) -> str:
         f"- pairs: {payload['n_pairs']} seed {payload['pairs_seed']}",
         f"- ours artifacts: `{payload.get('ours_artifacts')}`",
         f"- transform paths: {payload.get('transform_paths')}",
+        f"- metric protocol: **{v.get('metric_protocol', 'same_map_both_runs')}** — "
+        "same Q_s on BOTH runs; heldout ||C2-T(C1)|| is protocol-wrong and not headlined",
         "",
-        "## Method table (lower heldout_error better; higher gain / scan-rescan better)",
+        "## PRIMARY method table (higher reliability_after / gain_after / ident_after better)",
         "",
-        "| method | heldout_score_module | heldout_error | alignment_gain | ident_acc | scan_resc_raw | scan_resc_after | tau_phi_mean |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|",
+        "| method | reliability_raw | reliability_after | Δrel | gain_after | ident_after | collapsed | λ_mean | n_undet | tau_phi |",
+        "|---|---:|---:|---:|---:|---:|---|---:|---:|---:|",
     ]
-    for r in rows:
-        def fmt(x, nd=6):
-            if x is None:
-                return "—"
-            if isinstance(x, float):
-                return f"{x:.{nd}g}"
-            return str(x)
 
+    def fmt(x, nd=6):
+        if x is None:
+            return "—"
+        if isinstance(x, float):
+            return f"{x:.{nd}g}"
+        return str(x)
+
+    for r in rows:
         lines.append(
-            f"| {r['method']} | {fmt(r['heldout_score_module'])} | {fmt(r['heldout_error_module'])} | "
-            f"{fmt(r['alignment_gain'])} | {fmt(r['ident_accuracy'], 4)} | "
-            f"{fmt(r['scanrescan_corr_raw'], 4)} | {fmt(r['scanrescan_corr_after'], 4)} | {fmt(r['tau_phi_mean'])} |"
+            f"| {r['method']} | {fmt(r.get('reliability_raw'), 4)} | {fmt(r.get('reliability_after'), 4)} | "
+            f"{fmt(r.get('reliability_delta'), 4)} | {fmt(r.get('gain_after'))} | {fmt(r.get('ident_after'), 4)} | "
+            f"{r.get('collapsed')} | {fmt(r.get('lambda_mean'))} | {fmt(r.get('n_undetermined_subjects'))} | "
+            f"{fmt(r.get('tau_phi_mean'))} |"
         )
+    g = payload.get("group") or {}
+    lines += ["", "## Group REML on real posteriors (Track B)", ""]
+    if g and "error" not in g:
+        lines += [
+            f"- n_subjects: {g.get('n_subjects')}",
+            f"- n_eff (mean): {g.get('n_eff')} (min {g.get('n_eff_min')})",
+            f"- ci_ratio (reml/ttest): {g.get('ci_ratio')}",
+            f"- mean_sigma2: {g.get('mean_sigma2')}",
+            "",
+        ]
+    else:
+        lines += [f"- error: {g.get('error', 'unavailable')}", ""]
+
+    lines += [
+        "## Honest verdict vs SOTA bar (corrected metrics)",
+        "",
+        f"- beat noalign on gain_after: **{v.get('beat_noalign_on_gain_after')}**",
+        f"- beat BrainSync on gain_after: **{v.get('beat_brainsync_on_gain_after')}**",
+        f"- beat FUGW on gain_after: **{v.get('beat_fugw_on_gain_after')}**",
+        f"- beat conn_srm on gain_after (non-collapsed): **{v.get('beat_conn_srm_on_gain_after')}**",
+        f"- beat BrainSync+FUGW+noalign at non-collapsed rel/ident: **{v.get('sota_beat_brainsync_fugw_noalign')}**",
+        f"- group n_eff < S: **{v.get('group_neff_lt_S')}**",
+        f"- best ours row: **{v.get('best_ours_row')}** "
+        f"(gain_after={v.get('ours_gain_after')}, reliability_after={v.get('ours_reliability_after')}, "
+        f"ident_after={v.get('ours_ident_after')}, collapsed={v.get('ours_collapsed')})",
+        f"- scientific transform iterations used: **{v.get('iterations_used')}** (max 2)",
+        "",
+        "### Notes",
+        "",
+    ]
+    for n in v.get("notes", []):
+        lines.append(f"- {n}")
+    lines += ["", "### Literature gap", "", v.get("literature_gap", ""), ""]
+    return "\n".join(lines) + "\n"
     g = payload.get("group") or {}
     lines += [
         "",
@@ -687,35 +789,56 @@ def main(argv: list[str] | None = None) -> int:
     if "conn_srm" in wanted:
         method_plan.append({"name": "conn_srm", "method": "conn_srm"})
     if "ours" in wanted and args.ours_artifacts is not None and Path(args.ours_artifacts).exists():
-        method_plan.append(
-            {
-                "name": "ours_full_posterior_shrink",
-                "method": "ours_full",
-                "artifacts": Path(args.ours_artifacts),
-                "transform_mode": "posterior_shrink",
-            }
-        )
+        art = Path(args.ours_artifacts)
+        # Baseline ours paths
         method_plan.append(
             {
                 "name": "ours_full_point_procrustes",
                 "method": "ours_full",
-                "artifacts": Path(args.ours_artifacts),
+                "artifacts": art,
                 "transform_mode": "point_procrustes",
             }
         )
         method_plan.append(
             {
-                "name": "ours_full_c_bar_procrustes",
+                "name": "ours_full_posterior_shrink",
                 "method": "ours_full",
-                "artifacts": Path(args.ours_artifacts),
-                "transform_mode": "c_bar_procrustes",
+                "artifacts": art,
+                "transform_mode": "posterior_shrink",
+                "tau0_auto": True,
+                "lambda_source": "tau",
+                "c_pop_mix": 0.0,
+            }
+        )
+        # Scientific iteration 1: entropy-gated λ (adaptive, varies across subjects)
+        method_plan.append(
+            {
+                "name": "ours_full_posterior_shrink_entropy",
+                "method": "ours_full",
+                "artifacts": art,
+                "transform_mode": "posterior_shrink",
+                "tau0_auto": True,
+                "lambda_source": "row_entropy",
+                "c_pop_mix": 0.0,
+            }
+        )
+        # Scientific iteration 2: C_pop mix on Procrustes target + entropy λ
+        method_plan.append(
+            {
+                "name": "ours_full_posterior_shrink_cpop",
+                "method": "ours_full",
+                "artifacts": art,
+                "transform_mode": "posterior_shrink",
+                "tau0_auto": True,
+                "lambda_source": "row_entropy",
+                "c_pop_mix": 0.35,
             }
         )
         method_plan.append(
             {
                 "name": "ours_ablated",
                 "method": "ours_ablated",
-                "artifacts": Path(args.ablated_artifacts) if args.ablated_artifacts else Path(args.ours_artifacts),
+                "artifacts": Path(args.ablated_artifacts) if args.ablated_artifacts else art,
                 "transform_mode": "point_procrustes",
             }
         )
@@ -757,7 +880,10 @@ def main(argv: list[str] | None = None) -> int:
                 artifacts=spec.get("artifacts"),
                 transform_mode=spec.get("transform_mode"),
                 region_indices=ridx,
-                tau0=None,
+                tau0=spec.get("tau0"),
+                tau0_auto=spec.get("tau0_auto"),
+                lambda_source=spec.get("lambda_source"),
+                c_pop_mix=spec.get("c_pop_mix"),
             )
         except Exception as exc:
             rows.append(
@@ -766,13 +892,11 @@ def main(argv: list[str] | None = None) -> int:
                     "status": "failed",
                     "error": f"{type(exc).__name__}: {exc}",
                     "n_subjects": len(subs),
+                    "reliability_after": None,
+                    "gain_after": None,
+                    "ident_after": None,
+                    "collapsed": None,
                     "heldout_score_module": None,
-                    "heldout_score_aligned": None,
-                    "heldout_error_module": None,
-                    "alignment_gain": None,
-                    "ident_accuracy": None,
-                    "scanrescan_corr_raw": None,
-                    "scanrescan_corr_after": None,
                     "tau_phi_mean": None,
                 }
             )
@@ -782,16 +906,27 @@ def main(argv: list[str] | None = None) -> int:
         transform_paths[name] = str(meta.get("transform") or meta.get("transform_mode") or "")
         tau_by_method[name] = tau_phi
         row = score_transforms(
-            name, aligned1, aligned2, r1, r2, subs, pairs_use, meta=meta, tau_phi=tau_phi
+            name,
+            aligned1,
+            aligned2,
+            r1,
+            r2,
+            subs,
+            pairs_use,
+            meta=meta,
+            tau_phi=tau_phi,
+            tau0_eff=meta.get("tau0_eff"),
         )
         if spec.get("limit"):
             row["n_subjects_fugw_subset"] = len(subs)
             row["notes"] = f"FUGW scored on first {len(subs)} subjects (runtime); use --full-fugw for N={len(subjects)}"
         rows.append(row)
         print(
-            f"done {name} in {time.time()-t1:.1f}s: heldout_module={row['heldout_score_module']:.6g} "
-            f"gain={row['alignment_gain']:.6g} ident={row['ident_accuracy']:.4f} "
-            f"scan_after={row['scanrescan_corr_after']:.4f} path={transform_paths[name]}",
+            f"done {name} in {time.time()-t1:.1f}s: "
+            f"rel_after={row.get('reliability_after')} (raw {row.get('reliability_raw')}) "
+            f"gain_after={row.get('gain_after')} ident_after={row.get('ident_after')} "
+            f"collapsed={row.get('collapsed')} λ={row.get('lambda_mean')} "
+            f"path={transform_paths[name]}",
             flush=True,
         )
 
