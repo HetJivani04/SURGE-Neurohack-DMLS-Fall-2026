@@ -19,8 +19,10 @@ from .noalign import NoAlign
 from .ours import (
     OursAblated,
     OursFull,
+    calibrated_tau0,
     mix_identity_orthogonal,
     pool_pi_to_regions,
+    shrink_pi_hierarchical,
 )
 
 __all__ = [
@@ -39,8 +41,10 @@ __all__ = [
     "AblatedModel",
     "OursFull",
     "OursAblated",
+    "calibrated_tau0",
     "mix_identity_orthogonal",
     "pool_pi_to_regions",
+    "shrink_pi_hierarchical",
     "run_baseline",
     "align_features",
     "cfg_get",

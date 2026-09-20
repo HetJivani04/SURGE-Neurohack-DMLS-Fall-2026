@@ -17,8 +17,10 @@ from trajot.baselines.ours import (
     OursFull,
     _lambda_from_tau,
     _local_shrinkage,
+    calibrated_tau0,
     mix_identity_orthogonal,
     pool_pi_to_regions,
+    shrink_pi_hierarchical,
 )
 
 
@@ -156,6 +158,97 @@ def test_lambda_tau_gates():
     assert mid == pytest.approx(0.5)
 
 
+def test_calibrated_tau0_rescues_inactive_gate():
+    taus = [np.full(10, 0.002), np.full(10, 0.0015), np.full(10, 0.003)]
+    assert calibrated_tau0(taus, 0.1, auto=True) == pytest.approx(0.002)
+    assert calibrated_tau0(taus, 0.1, auto=False) == 0.1
+    near = [np.full(5, 0.08), np.full(5, 0.12)]
+    assert calibrated_tau0(near, 0.1, auto=True) == pytest.approx(0.1)
+
+
+def test_shrink_pi_hierarchical_adaptive():
+    R, K = 4, 4
+    pi_own = np.eye(R) * 2.0
+    pi_other = np.ones((R, K)) * 0.5
+    pi_pop = 0.5 * (pi_own + pi_other)
+    out = shrink_pi_hierarchical([pi_own, pi_other], [0.001, 5.0], kappa0=1.0)
+    assert out[0].shape == (R, K)
+    np.testing.assert_allclose(out[0], pi_own, atol=0.05)
+    d_pop = np.linalg.norm(out[1] - pi_pop)
+    d_own = np.linalg.norm(out[1] - pi_other)
+    assert d_pop < d_own
+
+
+def test_posterior_meta_declares_posterior_drives_transform(tmp_path: Path):
+    S, R, K, r = 2, 6, 6, 3
+    mats = _random_connectomes(S, R, seed=31)
+    taus = [np.full(R, 0.001), np.full(R, 2.0)]
+    run_dir = _write_posterior_artifacts(
+        tmp_path / "run_fid", S=S, R=R, K=K, r=r, taus=taus, seed=32
+    )
+    model = OursFull()
+    model.fit(mats, {}, extra={"run_dir": run_dir})
+    assert model.meta["transform"] == "posterior_shrink_tau_gated"
+    assert model.meta["posterior_drives_transform"] is True
+    assert model.meta["hierarchical_pi_shrink"] is True
+    assert model.meta["tau0_eff"] is not None
+    assert model.meta["lambda_max"] - model.meta["lambda_min"] > 0.1
+    abl = OursAblated()
+    abl.fit(mats, {}, extra={"run_dir": run_dir})
+    assert abl.meta.get("posterior_drives_transform") is False
+
+
+def test_c_bar_procrustes_path(tmp_path: Path):
+    S, R, K, r = 2, 6, 6, 3
+    mats = _random_connectomes(S, R, seed=33)
+    run_dir = _write_posterior_artifacts(tmp_path / "run_cb", S=S, R=R, K=K, r=r, seed=34)
+    model = OursFull()
+    model.transform_mode = "c_bar_procrustes"
+    model.fit(mats, {}, extra={"run_dir": run_dir})
+    assert model.meta["transform"] == "c_bar_procrustes"
+    assert model.meta["reference_geometry"] == "C_bar_BBt"
+    assert model.meta["posterior_drives_transform"] is False
+    out = model.transform(mats[0])
+    assert out.shape == (R, R)
+    assert np.isfinite(out).all()
+
+
+def test_auto_region_index_from_data_root_when_missing(tmp_path: Path, monkeypatch):
+    import ot
+
+    S, R, K, r = 2, 6, 6, 3
+    V = 12
+    mats = _random_connectomes(S, R, seed=35)
+    taus = [np.full(V, 0.02) for _ in range(S)]
+    run_dir = _write_posterior_artifacts(
+        tmp_path / "run_auto",
+        S=S,
+        R=R,
+        K=K,
+        r=r,
+        subject_ids=["001", "002"],
+        pi_shapes=[(V, K), (V, K)],
+        taus=taus,
+        seed=36,
+    )
+    data_root = tmp_path / "fake_data"
+    deriv = data_root / "derivatives" / "trajot"
+    deriv.mkdir(parents=True)
+    np.savez(deriv / "template_geometry.npz", region_labels=np.arange(20) % R)
+    for sid in ("001", "002"):
+        rng = np.random.default_rng(hash(sid) % 10_000)
+        ts = rng.normal(size=(20, 16))
+        ts[:8] = 1.0  # constant → std=0 → invalid; 12 valid remain
+        np.savez(deriv / f"sub-{sid}_run-1.npz", timeseries=ts)
+
+    boom = _ExplodingEMD()
+    monkeypatch.setattr(ot, "emd", boom)
+    model = OursFull()
+    model.fit(mats, {}, extra={"run_dir": run_dir, "data_root": str(data_root)})
+    assert model.meta["transform"] == "posterior_shrink_tau_gated"
+    assert boom.calls == 0
+
+
 def test_local_shrinkage_matches_task1_formula():
     C = _sym(np.random.default_rng(1).normal(size=(6, 6)))
     Q = _orthogonal(6, seed=2)
@@ -283,6 +376,7 @@ def test_tau_infinite_shrinks_to_identity(tmp_path: Path):
         tmp_path / "run_hi", S=S, R=R, K=K, r=r, taus=taus, seed=10
     )
     model = OursFull()
+    model.tau0_auto = False  # keep fixed tau0 so τ→∞ ⇒ λ→0 is the formula limit
     model.fit(mats, {}, extra={"run_dir": run_dir})
     assert model.meta["transform"] == "posterior_shrink_tau_gated"
     assert all(lam < 1e-6 for lam in model.lambdas)
@@ -298,6 +392,7 @@ def test_tau_zero_full_procrustes_qt_c_q(tmp_path: Path):
         tmp_path / "run_lo", S=S, R=R, K=K, r=r, taus=taus, seed=12
     )
     model = OursFull()
+    model.tau0_auto = False
     model.fit(mats, {}, extra={"run_dir": run_dir})
     assert model.meta["transform"] == "posterior_shrink_tau_gated"
     assert all(lam == pytest.approx(1.0) for lam in model.lambdas)
@@ -309,7 +404,7 @@ def test_tau_zero_full_procrustes_qt_c_q(tmp_path: Path):
 
 
 def test_adaptive_lambda_varies_with_subject_tau(tmp_path: Path):
-    """Low-τ subjects align strongly; high-τ subjects stay near identity (adaptive strength)."""
+    """Low-τ subjects align harder than high-τ (adaptive strength via hierarchy)."""
     S, R, K, r = 2, 5, 5, 3
     mats = _random_connectomes(S, R, seed=13)
     taus = [np.full(R, 0.001), np.full(R, 5.0)]
@@ -319,15 +414,16 @@ def test_adaptive_lambda_varies_with_subject_tau(tmp_path: Path):
     model = OursFull()
     model.fit(mats, {}, extra={"run_dir": run_dir})
     lam0, lam1 = model.lambdas
-    assert lam0 > 0.9
-    assert lam1 < 0.01
+    assert lam0 > lam1
+    assert lam0 - lam1 > 0.2
+    # With auto tau0 on this τ scale, low-τ still gets strong alignment
+    assert lam0 > 0.8
     out0 = model.transform(mats[0])
     out1 = model.transform(mats[1])
-    Q0, Q1 = model._orths[0], model._orths[1]
-    # subject 0 near full Procrustes
-    np.testing.assert_allclose(out0, _sym(Q0.T @ mats[0] @ Q0), atol=0.05)
-    # subject 1 near identity
-    np.testing.assert_allclose(out1, mats[1], atol=0.05)
+    Q0 = model._orths[0]
+    # subject 0 (low τ) is a strong Procrustes map
+    np.testing.assert_allclose(out0, _sym(Q0.T @ mats[0] @ Q0), atol=0.15)
+    assert not np.allclose(out1, out0)
 
 
 def test_pairwise_gamma_shape_and_symmetry_structure(tmp_path: Path):

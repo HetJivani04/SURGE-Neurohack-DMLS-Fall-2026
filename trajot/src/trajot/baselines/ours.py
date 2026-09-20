@@ -166,6 +166,26 @@ def _lambda_from_tau(mean_tau: float | None, tau0: float) -> float:
     return 1.0 / (1.0 + (float(mean_tau) / tau0) ** 2)
 
 
+def _row_stochastic_entropy(pi: np.ndarray) -> float:
+    """Mean row entropy of a coupling after row-normalization (nats)."""
+    P = np.asarray(pi, dtype=np.float64)
+    if P.ndim != 2 or P.shape[0] == 0:
+        return 0.0
+    row = np.maximum(P.sum(axis=1, keepdims=True), 1e-12)
+    P = P / row
+    return float(np.mean(-(P * np.log(np.clip(P, 1e-300, None))).sum(axis=1)))
+
+
+def _lambda_from_entropy(entropy: float | None, ent0: float) -> float:
+    """Entropy-gated alignment: sharp couplings (low H) get λ→1; diffuse stay near identity."""
+    if entropy is None:
+        return 1.0
+    ent0 = float(ent0)
+    if ent0 <= 0:
+        return 1.0
+    return 1.0 / (1.0 + (float(entropy) / ent0) ** 2)
+
+
 def subject_tau_means(tau_phi: Sequence[Any] | None) -> list[float | None]:
     """Per-subject mean τ (or None when missing)."""
     if not tau_phi:
@@ -487,6 +507,8 @@ class OursFull(Baseline):
     tau0_auto: bool = True
     hierarchical_pi_shrink: bool = True
     kappa0: float = 1.0
+    lambda_source: str = "tau"  # "tau" | "row_entropy"
+    c_pop_mix: float = 0.0  # blend C_bar with empirical C_pop as Procrustes target
     registry_name: str = "ours_full"
 
     def __init__(self) -> None:
@@ -496,7 +518,10 @@ class OursFull(Baseline):
         self.tau0_auto = bool(getattr(type(self), "tau0_auto", True))
         self.hierarchical_pi_shrink = bool(getattr(type(self), "hierarchical_pi_shrink", True))
         self.kappa0 = float(getattr(type(self), "kappa0", 1.0))
+        self.lambda_source = str(getattr(type(self), "lambda_source", "tau"))
+        self.c_pop_mix = float(getattr(type(self), "c_pop_mix", 0.0))
         self.tau0_eff: float | None = None
+        self.ent0_eff: float | None = None
         self._B: np.ndarray | None = None
         self._F_bar: np.ndarray | None = None
         self._nu: np.ndarray | None = None
@@ -762,6 +787,17 @@ class OursFull(Baseline):
         cfg_tau0_auto = cfg_get(cfg, "model.tau0_auto", None)
         if cfg_tau0_auto is not None:
             self.tau0_auto = bool(cfg_tau0_auto)
+        cfg_lambda_source = cfg_get(cfg, "model.lambda_source", None)
+        if cfg_lambda_source is not None:
+            self.lambda_source = str(cfg_lambda_source)
+        else:
+            self.lambda_source = str(getattr(self, "lambda_source", None) or type(self).lambda_source)
+        cfg_cpop = cfg_get(cfg, "model.c_pop_mix", None)
+        if cfg_cpop is not None:
+            self.c_pop_mix = float(cfg_cpop)
+        else:
+            self.c_pop_mix = float(getattr(self, "c_pop_mix", None) if getattr(self, "c_pop_mix", None) is not None
+                                    else type(self).c_pop_mix)
         cfg_hier = cfg_get(cfg, "model.hierarchical_pi_shrink", None)
         if cfg_hier is not None:
             self.hierarchical_pi_shrink = bool(cfg_hier)
@@ -842,10 +878,12 @@ class OursFull(Baseline):
                 pi_bars.append(pool_pi_to_regions(pi_raw, ridx, self._n_regions))
             if self.hierarchical_pi_shrink and len(pi_bars) >= 2:
                 pi_bars = shrink_pi_hierarchical(pi_bars, tau_means, kappa0=self.kappa0)
-            pi_pop = np.mean(np.stack(pi_bars, axis=0), axis=0)
+            ents = [_row_stochastic_entropy(p) for p in pi_bars]
+            self.ent0_eff = float(np.median(ents)) if ents else 1.0
+            mix = float(self.c_pop_mix)
             for s in range(mats.shape[0]):
                 pi_bar = pi_bars[s]
-                # Learned template geometry denoises vs raw C_pop when K matches coupling cols.
+                # Procrustes target: learned C_bar, optionally mixed with empirical C_pop.
                 if C_bar.shape[0] != pi_bar.shape[1]:
                     d = min(C_bar.shape[0], self._n_regions, pi_bar.shape[1])
                     C_feat = _spectral_rows(C_bar, d)
@@ -854,8 +892,17 @@ class OursFull(Baseline):
                         C_for_pi = C_bar
                 else:
                     C_for_pi = C_bar
+                if (
+                    mix > 0.0
+                    and self._C_pop is not None
+                    and self._C_pop.shape == C_for_pi.shape
+                ):
+                    C_for_pi = symmetrize_zero_diag((1.0 - mix) * C_for_pi + mix * self._C_pop)
                 Q = _orthogonal_from_coupling(mats[s], C_for_pi, pi_bar)
-                lam = _lambda_from_tau(tau_means[s], self.tau0_eff)
+                if str(self.lambda_source).lower() in {"row_entropy", "entropy"}:
+                    lam = _lambda_from_entropy(ents[s], self.ent0_eff)
+                else:
+                    lam = _lambda_from_tau(tau_means[s], self.tau0_eff)
                 self._couplings.append(pi_bar)
                 self._orths.append(Q)
                 self._lams.append(float(lam))
@@ -901,6 +948,8 @@ class OursFull(Baseline):
             transform=path,
             transform_mode=self.transform_mode,
             tau0=self.tau0,
+            lambda_source=str(self.lambda_source),
+            c_pop_mix=float(self.c_pop_mix),
             C_pop_shape=list(self._C_pop.shape),
             n_pi_means=len(self._pi_means),
             heldout_couplings=True,
@@ -909,8 +958,12 @@ class OursFull(Baseline):
             self.meta["lambda_mean"] = float(np.mean(self._lams))
             self.meta["lambda_min"] = float(np.min(self._lams))
             self.meta["lambda_max"] = float(np.max(self._lams))
+            self.meta["lambda_p10"] = float(np.percentile(self._lams, 10))
+            self.meta["lambda_p50"] = float(np.percentile(self._lams, 50))
+            self.meta["lambda_p90"] = float(np.percentile(self._lams, 90))
             self.meta["reference_geometry"] = "C_bar_BBt"
             self.meta["tau0_eff"] = self.tau0_eff
+            self.meta["ent0_eff"] = self.ent0_eff
             self.meta["tau0_auto"] = bool(self.tau0_auto)
             self.meta["hierarchical_pi_shrink"] = bool(self.hierarchical_pi_shrink)
             self.meta["posterior_drives_transform"] = True
