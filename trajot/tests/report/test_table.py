@@ -4,17 +4,19 @@ import csv
 import io
 import json
 import random
+import sys
 from pathlib import Path
 
 import pytest
 
 from fake_runs import EXPERIMENTS, method_stats, metrics_payload, write_full_registry, write_run
+from trajot.eval.folds import FOLD_PROCEDURE
 from trajot.report.table import (
-    COLUMN_TITLES, EMPTY_CELL, MODEL_ROWS, ROW_METHODS, TABLE_COLUMNS, TABLE_EXPERIMENTS, TABLE_ROWS, MetricsError,
-    collect_rows, render_table, render_table_meta, validate_metrics,
+    COLUMN_TITLES, EMPTY_CELL, METHOD_ALIASES, MODEL_ROWS, ROW_METHODS, TABLE_COLUMNS, TABLE_EXPERIMENTS, TABLE_ROWS,
+    MetricsError, collect_rows, render_table, render_table_meta, validate_metrics,
 )
 
-GOOD = metrics_payload({"noalign": method_stats(), "full": method_stats(model=True)})
+GOOD = metrics_payload({"noalign": method_stats(), "ours_full": method_stats(model=True)})
 
 
 def payload(**changes):
@@ -32,8 +34,18 @@ def test_the_table_is_six_fixed_rows_and_five_fixed_columns() -> None:
 
 def test_every_row_has_one_metrics_key_and_one_experiment() -> None:
     assert list(ROW_METHODS) == TABLE_ROWS and len(set(ROW_METHODS.values())) == 6
+    assert ROW_METHODS["Ours (full)"] == "ours_full" and ROW_METHODS["Ours (ablated)"] == "ours_ablated"
     assert list(EXPERIMENTS) == TABLE_EXPERIMENTS and MODEL_ROWS == ["Ours (ablated)", "Ours (full)"]
     assert [EXPERIMENTS[e][0] for e in TABLE_EXPERIMENTS] == list(ROW_METHODS.values())
+    assert METHOD_ALIASES["full"] == "ours_full" and METHOD_ALIASES["ablated"] == "ours_ablated"
+
+
+# ---- conftest / fake_runs import path --------------------------------------------------------------------
+def test_conftest_puts_tests_dir_on_sys_path_so_fake_runs_imports() -> None:
+    assert any(Path(p).resolve() == Path(__file__).resolve().parents[1] for p in sys.path)
+    import fake_runs as fr
+
+    assert fr.EXPERIMENTS["10_ours_full"][0] == "ours_full"
 
 
 # ---- validate_metrics ------------------------------------------------------------------------------------
@@ -52,7 +64,7 @@ def test_a_missing_top_level_key_is_rejected_and_named(key: str) -> None:
 
 @pytest.mark.parametrize("key", ["ident_accuracy", "ident_ci", "perm_p", "null_max", "alignment_gain",
                                  "nonidentifiable_pairs", "per_pair_uncertainty", "per_pair_flags"])
-@pytest.mark.parametrize("method", ["noalign", "full"])
+@pytest.mark.parametrize("method", ["noalign", "ours_full"])
 def test_a_missing_per_method_key_is_rejected_and_named(method: str, key: str) -> None:
     bad = payload()
     del bad["methods"][method][key]
@@ -76,7 +88,7 @@ def test_a_payload_that_is_not_an_object_is_rejected() -> None:
     ("ident_accuracy", 1.2), ("ident_accuracy", -0.1), ("ident_accuracy", "0.5"), ("ident_accuracy", True),
     ("ident_accuracy", float("nan")), ("ident_ci", [0.1]), ("ident_ci", [0.1, "x"]), ("ident_ci", 0.5),
     ("ident_ci", [0.1, 0.2, 0.3]), ("perm_p", 0.0), ("perm_p", 1.5), ("perm_p", -0.2), ("perm_p", "x"),
-    ("null_max", "a"), ("null_max", None), ("alignment_gain", "high"), ("alignment_gain", float("inf")),
+    ("null_max", "a"), ("alignment_gain", "high"), ("alignment_gain", float("inf")),
     ("nonidentifiable_pairs", 1.5), ("nonidentifiable_pairs", -1), ("nonidentifiable_pairs", True),
     ("nonidentifiable_pairs", None),
 ])
@@ -86,6 +98,16 @@ def test_malformed_values_are_rejected_and_named(key: str, value) -> None:
     with pytest.raises(MetricsError) as err:
         validate_metrics(bad, "run-z")
     assert key in str(err.value) and "run-z" in str(err.value)
+
+
+def test_null_max_may_be_none_when_unfilled_aligned_with_eval_metrics() -> None:
+    ok = payload()
+    ok["methods"]["noalign"]["null_max"] = None
+    validate_metrics(ok, "r")
+    bad = payload()
+    bad["methods"]["noalign"]["null_max"] = "a"
+    with pytest.raises(MetricsError, match="null_max"):
+        validate_metrics(bad, "run-z")
 
 
 def test_the_stated_ranges_are_inclusive_where_the_issue_says_so() -> None:
@@ -116,7 +138,7 @@ def test_every_non_model_method_must_report_null_for_the_model_only_columns(base
     validate_metrics(payload(methods={baseline: method_stats()}), "r")
 
 
-@pytest.mark.parametrize("model", ["ablated", "full"])
+@pytest.mark.parametrize("model", ["ours_ablated", "ours_full", "ablated", "full"])
 @pytest.mark.parametrize("key", ["per_pair_uncertainty", "per_pair_flags"])
 def test_a_model_row_must_populate_the_model_only_columns(model: str, key: str) -> None:
     validate_metrics(payload(methods={model: method_stats(model=True)}), "r")
@@ -129,7 +151,7 @@ def test_a_model_row_must_populate_the_model_only_columns(model: str, key: str) 
                                        ("per_pair_flags", [1, 0]), ("per_pair_flags", "yes"), ("per_pair_flags", [])])
 def test_model_only_columns_must_be_well_formed_when_present(key: str, value) -> None:
     with pytest.raises(MetricsError, match=key):
-        validate_metrics(payload(methods={"full": method_stats(model=True, **{key: value})}), "r")
+        validate_metrics(payload(methods={"ours_full": method_stats(model=True, **{key: value})}), "r")
 
 
 @pytest.mark.parametrize("key,value", [("n_pairs", None), ("n_pairs", 0), ("n_pairs", -5), ("n_pairs", 12.5),
@@ -155,6 +177,30 @@ def test_validation_is_not_confused_by_extra_keys() -> None:
 
 
 # ---- collect_rows ----------------------------------------------------------------------------------------
+def test_metrics_key_ours_full_fills_the_ours_full_table_row(tmp_path: Path) -> None:
+    write_run(tmp_path, "r-full", "10_ours_full",
+              metrics_payload({"ours_full": method_stats(model=True, accuracy=0.91)}, experiment="10_ours_full",
+                              run_id="r-full"))
+    rows = collect_rows(tmp_path / "index.csv")
+    full = next(r for r in rows if r["method"] == "Ours (full)")
+    ablated = next(r for r in rows if r["method"] == "Ours (ablated)")
+    assert not full["missing"] and full["ident_accuracy"] == pytest.approx(0.91)
+    assert full["per_pair_uncertainty"] == 0.31 and full["per_pair_flags"] == [False, True, False, False]
+    assert ablated["missing"]
+
+
+def test_collect_rows_accepts_legacy_full_and_ablated_aliases(tmp_path: Path) -> None:
+    write_run(tmp_path, "legacy", "10_ours_full",
+              metrics_payload({"full": method_stats(model=True, accuracy=0.88),
+                               "ablated": method_stats(model=True, accuracy=0.71)},
+                              experiment="10_ours_full", run_id="legacy"))
+    rows = collect_rows(tmp_path / "index.csv")
+    full = next(r for r in rows if r["method"] == "Ours (full)")
+    ablated = next(r for r in rows if r["method"] == "Ours (ablated)")
+    assert not full["missing"] and not ablated["missing"]
+    assert full["ident_accuracy"] == pytest.approx(0.88) and ablated["ident_accuracy"] == pytest.approx(0.71)
+
+
 def test_collect_rows_returns_one_dict_per_table_row_in_table_order(tmp_path: Path) -> None:
     rows = collect_rows(write_full_registry(tmp_path))
     assert [r["method"] for r in rows] == TABLE_ROWS and not any(r["missing"] for r in rows)
@@ -201,7 +247,7 @@ def test_experiments_select_which_rows_are_filled(tmp_path: Path) -> None:
 def test_a_multi_method_run_fills_several_rows(tmp_path: Path) -> None:
     """W3's evaluate script reports many methods in one metrics.json."""
     methods = {k: method_stats(model=m, accuracy=0.4 + 0.1 * i) for i, (k, m) in enumerate(
-        [("noalign", False), ("brainsync", False), ("fugw", False), ("conn_srm", False), ("ablated", True)])}
+        [("noalign", False), ("brainsync", False), ("fugw", False), ("conn_srm", False), ("ours_ablated", True)])}
     write_run(tmp_path, "eval-run", "00_noalign", metrics_payload(methods, experiment="00_noalign"))
     rows = collect_rows(tmp_path / "index.csv")
     assert [r["method"] for r in rows if not r["missing"]] == TABLE_ROWS[:5] and rows[5]["missing"]
@@ -255,6 +301,13 @@ def test_a_registered_run_without_a_usable_metrics_file_is_reported_by_name(tmp_
 def test_a_missing_registry_gives_an_all_missing_table(tmp_path: Path) -> None:
     rows = collect_rows(tmp_path / "runs" / "index.csv")
     assert [r["method"] for r in rows] == TABLE_ROWS and all(r["missing"] and r["run_id"] is None for r in rows)
+
+
+def test_null_max_none_carries_through_collection_as_unfilled(tmp_path: Path) -> None:
+    stats = method_stats(null_max=None)
+    write_run(tmp_path, "r-null-max", "00_noalign", metrics_payload({"noalign": stats}, experiment="00_noalign"))
+    rows = collect_rows(tmp_path / "index.csv")
+    assert rows[0]["null_max"] is None
 
 
 # ---- render_table ----------------------------------------------------------------------------------------
@@ -317,3 +370,12 @@ def test_render_table_meta_states_the_declared_subsample() -> None:
     assert "draw" in text.lower() and "default_rng" in text
     assert "not reported" in render_table_meta("f", 2026, 500, None)
     assert "not declared" in render_table_meta("f", None, None, None)
+
+
+def test_render_table_meta_says_without_replacement_matching_fold_procedure() -> None:
+    text = render_table_meta("two-run split", 2026, 500, 28.4)
+    assert "without replacement" in text
+    assert "with replacement" not in text
+    assert FOLD_PROCEDURE in text
+    assert "without replacement" in FOLD_PROCEDURE
+    assert "choice" in text.lower() or "choice" in FOLD_PROCEDURE.lower()

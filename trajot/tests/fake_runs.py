@@ -19,8 +19,8 @@ EXPERIMENTS = {
     "01_brainsync": ("brainsync", False),
     "02_fugw": ("fugw", False),
     "03_conn_srm": ("conn_srm", False),
-    "11_ours_ablated": ("ablated", True),
-    "10_ours_full": ("full", True),
+    "11_ours_ablated": ("ours_ablated", True),
+    "10_ours_full": ("ours_full", True),
 }
 
 

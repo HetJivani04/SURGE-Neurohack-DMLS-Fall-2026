@@ -73,8 +73,13 @@ def test_experiments_all_prints_the_six_by_five_table_built_from_the_registry_al
 def test_the_declared_subsample_seed_fold_scheme_and_beta_accompany_the_table(script, runs_dir, capsys) -> None:
     write_full_registry(runs_dir)
     _, out, _ = run(script, capsys)
-    for expected in ("500 ordered subject pairs, seed 2026", "default_rng", script.FOLD_SCHEME, "beta: 28.4"):
+    for expected in ("500 ordered subject pairs, seed 2026", "default_rng", script.FOLD_SCHEME, "beta: 28.4",
+                     "without replacement"):
         assert expected in out
+    assert "with replacement" not in out
+    from trajot.eval.folds import FOLD_PROCEDURE
+
+    assert FOLD_PROCEDURE in out
 
 
 def test_it_works_when_only_the_fake_runs_are_present(script, runs_dir, capsys) -> None:
@@ -278,7 +283,23 @@ def test_the_table_experiments_are_the_experiments_of_run_experiment() -> None:
 def test_the_method_keys_of_the_rows_are_the_names_w3_evaluates() -> None:
     from trajot.baselines import BASELINE_REGISTRY
 
-    assert set(list(ROW_METHODS.values())[:5]) <= set(BASELINE_REGISTRY)  # the model row "full" has no W3 entry yet
+    values = list(ROW_METHODS.values())
+    assert "ours_full" in values and "ours_ablated" in values
+    assert set(values[:4]) <= set(BASELINE_REGISTRY)
+    assert "ours_full" in BASELINE_REGISTRY and "ours_ablated" in BASELINE_REGISTRY
+    assert ROW_METHODS["Ours (full)"] == "ours_full" and ROW_METHODS["Ours (ablated)"] == "ours_ablated"
+
+
+def test_fake_runs_and_compare_cli_use_canonical_ours_keys(script, runs_dir, capsys) -> None:
+    from fake_runs import EXPERIMENTS
+
+    assert EXPERIMENTS["10_ours_full"][0] == "ours_full" and EXPERIMENTS["11_ours_ablated"][0] == "ours_ablated"
+    write_full_registry(runs_dir)
+    code, out, err = run(script, capsys, "--experiments", "all")
+    assert code == 0 and err == ""
+    rows = pipe_rows(out)[2:]
+    assert [r[0].replace("*", "") for r in rows] == TABLE_ROWS
+    assert rows[5][3] != EMPTY_CELL and rows[4][3] != EMPTY_CELL  # ours_* keys filled both model rows
 
 
 def test_the_fold_scheme_describes_w3s_two_run_split(script) -> None:

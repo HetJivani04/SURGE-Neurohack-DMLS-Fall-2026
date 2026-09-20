@@ -13,7 +13,10 @@ from pathlib import Path
 
 import pandas as pd
 
-from trajot.report.table import ROW_METHODS, TABLE_EXPERIMENTS, TABLE_ROWS, MetricsError, latest_successful_run, load_run_metrics
+from trajot.report.table import (
+    ROW_METHODS, TABLE_EXPERIMENTS, TABLE_ROWS, MetricsError, latest_successful_run, load_run_metrics,
+    lookup_method_entry,
+)
 from trajot.runlog.registry import read_registry
 
 SENSITIVITY_SUFFIX = "_long"
@@ -58,7 +61,7 @@ def scan_length_metrics(index_path: Path, subset: Iterable[str], experiments: It
             raise MetricsError(f"run {run_id}: n_subjects: evaluated on {n_subjects!r} subjects "
                                f"but the long-run subset has {len(subset)}")
         for label in TABLE_ROWS:
-            stats = metrics["methods"].get(ROW_METHODS[label])
+            stats = lookup_method_entry(metrics["methods"], ROW_METHODS[label])
             if stats is None:
                 continue
             uncertainty = stats["per_pair_uncertainty"]

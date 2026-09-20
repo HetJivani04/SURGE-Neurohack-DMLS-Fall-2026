@@ -51,8 +51,15 @@ EXPERIMENT_ALIASES = {
     "10_ours_full": "ours_full",
     "11_ours_ablated": "ours_ablated",
     "ablated": "ours_ablated",
+    "full": "ours_full",
     "ours": "ours_full",
 }
+CANONICAL_OURS_KEYS = frozenset({"ours_full", "ours_ablated"})
+
+
+def _canonical_method_key(name: str) -> str:
+    key = name.lower().strip()
+    return EXPERIMENT_ALIASES.get(key, key)
 
 
 def _method_keys() -> set[str]:
@@ -64,7 +71,7 @@ def _top_keys() -> set[str]:
 
 
 def _resolve_method(name: str):
-    key = EXPERIMENT_ALIASES.get(name.lower().strip(), name.lower().strip())
+    key = _canonical_method_key(name)
     return key, get_baseline(key)
 
 
@@ -225,8 +232,7 @@ def evaluate_method(
     if method is None:
         method_key, method = _resolve_method(name)
     else:
-        method_key = name.lower().strip()
-        method_key = EXPERIMENT_ALIASES.get(method_key, method_key)
+        method_key = _canonical_method_key(name)
 
     meta: dict[str, Any] = {}
     fit_error: str | None = None
@@ -288,34 +294,38 @@ def evaluate_method(
         n_nonident = 0
         nonident_flags = []
 
-    # per_pair_uncertainty: model-only (tau_phi); baselines report null.
+    # Model-only columns: baselines must report JSON null (never lists or zeros).
+    is_model_method = method_key in CANONICAL_OURS_KEYS
     per_pair_uncertainty: float | None = None
-    tau = getattr(method, "tau_phi", None)
-    if tau is not None:
-        try:
-            arr = np.asarray(tau, dtype=np.float64)
-            per_pair_uncertainty = float(np.mean(arr)) if arr.size else None
-        except Exception:
-            per_pair_uncertainty = None
-    if per_pair_uncertainty is None and method_key.startswith("ours"):
-        artifacts = ours_artifacts or meta.get("ours_artifacts") or meta.get("template_path")
-        if artifacts:
-            art_dir = Path(artifacts)
-            if art_dir.is_file():
-                art_dir = art_dir.parent
-            tau_path = art_dir / "tau_phi.npz"
-            if tau_path.is_file():
-                try:
-                    with np.load(tau_path) as z:
-                        key = "tau_phi" if "tau_phi" in z.files else z.files[0]
-                        per_pair_uncertainty = float(np.mean(np.asarray(z[key], dtype=np.float64)))
-                except Exception:
-                    per_pair_uncertainty = None
+    if is_model_method:
+        tau = getattr(method, "tau_phi", None)
+        if tau is not None:
+            try:
+                arr = np.asarray(tau, dtype=np.float64)
+                per_pair_uncertainty = float(np.mean(arr)) if arr.size else None
+            except Exception:
+                per_pair_uncertainty = None
+        if per_pair_uncertainty is None:
+            artifacts = ours_artifacts or meta.get("ours_artifacts") or meta.get("template_path")
+            if artifacts:
+                art_dir = Path(artifacts)
+                if art_dir.is_file():
+                    art_dir = art_dir.parent
+                tau_path = art_dir / "tau_phi.npz"
+                if tau_path.is_file():
+                    try:
+                        with np.load(tau_path) as z:
+                            key = "tau_phi" if "tau_phi" in z.files else z.files[0]
+                            per_pair_uncertainty = float(np.mean(np.asarray(z[key], dtype=np.float64)))
+                    except Exception:
+                        per_pair_uncertainty = None
 
-    if nonident_flags:
-        per_pair_flags = nonident_flags
-    else:
-        per_pair_flags = [bool(v) for v in correct.tolist()]
+    per_pair_flags: list[bool] | None = None
+    if is_model_method:
+        if nonident_flags:
+            per_pair_flags = nonident_flags
+        else:
+            per_pair_flags = [bool(v) for v in correct.tolist()]
 
     stats = {
         "ident_accuracy": float(acc),
@@ -325,7 +335,7 @@ def evaluate_method(
         "alignment_gain": float(alignment_gain_val),
         "nonidentifiable_pairs": int(n_nonident),
         "per_pair_uncertainty": None if per_pair_uncertainty is None else float(per_pair_uncertainty),
-        "per_pair_flags": [bool(v) for v in per_pair_flags],
+        "per_pair_flags": None if per_pair_flags is None else [bool(v) for v in per_pair_flags],
     }
     if meta:
         stats["_meta"] = meta
@@ -380,8 +390,44 @@ def _synthetic_connectomes(*, S: int, R: int, seed: int) -> tuple[np.ndarray, np
     return run1, run2, subjects
 
 
+def _parcellate_timeseries(ts_vt: np.ndarray, labels: np.ndarray, n_regions: int) -> np.ndarray:
+    """Vertex ``(V,T)`` → region ``(R,T)`` means, matching preprocess ``parcellate``."""
+    from trajot.geometry.connectivity import parcellate
+
+    X = np.asarray(ts_vt, dtype=np.float32)
+    if X.ndim != 2:
+        raise ValueError(f"timeseries must be (V,T), found {X.shape}")
+    labels = np.asarray(labels)
+    valid = X.std(axis=1) > 0
+    present = np.unique(labels[valid])
+    lookup = np.full(n_regions, -1)
+    lookup[present] = np.arange(present.size)
+    region_ts = np.zeros((n_regions, X.shape[1]), dtype=np.float32)
+    if present.size:
+        region_ts[present] = parcellate(X[valid], lookup[labels[valid]], present.size)
+    return region_ts
+
+
 def _load_timeseries(root: Path, subjects: list[str]) -> dict[str, np.ndarray] | None:
+    """Load two-run timeseries for baselines.
+
+    Returns region-resolution ``(S,R,T)`` stacks when template labels are available
+    (BrainSync requires ``V == R`` connectome-resolution series). Falls back to raw
+    contract vertex series only if labels cannot be resolved.
+    """
     from trajot.io.contract import read_subject_run, subject_run_path
+
+    labels = None
+    n_regions = None
+    geom = root / "derivatives" / "trajot" / "template_geometry.npz"
+    if geom.is_file():
+        try:
+            with np.load(geom) as z:
+                if "region_labels" in z.files:
+                    labels = np.asarray(z["region_labels"])
+                    n_regions = int(z["n_left"]) * 2 if False else int(labels.max()) + 1
+        except Exception:
+            labels, n_regions = None, None
 
     ts1, ts2 = [], []
     for sid in subjects:
@@ -390,8 +436,15 @@ def _load_timeseries(root: Path, subjects: list[str]) -> dict[str, np.ndarray] |
             d2 = read_subject_run(subject_run_path(root, sid, "2"))
         except Exception:
             return None
-        ts1.append(np.asarray(d1["timeseries"], dtype=np.float32))
-        ts2.append(np.asarray(d2["timeseries"], dtype=np.float32))
+        a1 = np.asarray(d1["timeseries"], dtype=np.float32)
+        a2 = np.asarray(d2["timeseries"], dtype=np.float32)
+        conn_r = int(np.asarray(d1["connectivity"]).shape[0])
+        if labels is not None and a1.shape[0] == labels.shape[0]:
+            R = conn_r
+            a1 = _parcellate_timeseries(a1, labels, R)
+            a2 = _parcellate_timeseries(a2, labels, R)
+        ts1.append(a1)
+        ts2.append(a2)
     if not ts1:
         return None
     try:
@@ -475,6 +528,7 @@ def _evaluate_all(
 ) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     for name in methods:
+        key = _canonical_method_key(name)
         stats = evaluate_method(
             name,
             None,
@@ -485,7 +539,7 @@ def _evaluate_all(
             timeseries=timeseries,
             ours_artifacts=ours_artifacts,
         )
-        out[name.lower()] = _strip_meta(stats)
+        out[key] = _strip_meta(stats)
     return out
 
 

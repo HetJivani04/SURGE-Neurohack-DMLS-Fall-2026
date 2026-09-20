@@ -13,6 +13,7 @@ import math
 from pathlib import Path
 from typing import Any, Iterable
 
+from trajot.eval.folds import FOLD_PROCEDURE
 from trajot.runlog.registry import read_registry
 
 TABLE_ROWS = ["No alignment", "BrainSync", "FUGW", "connectivity-SRM", "Ours (ablated)", "Ours (full)"]
@@ -22,11 +23,31 @@ EMPTY_CELL = "—"
 # Markdown header texts, in TABLE_COLUMNS order (the layout of the table in the W4 issue).
 COLUMN_TITLES = ["Method", "Identification acc.", "vs null (p)", "Per-pair uncertainty", "Non-identifiable pairs flagged"]
 
-# The key each row has under metrics.json["methods"]: W3's baseline names, and "full" for the full model, which has
-# no W3 entry yet. Only the two model rows may fill the two model-only columns; every other method key is a baseline.
-ROW_METHODS = dict(zip(TABLE_ROWS, ["noalign", "brainsync", "fugw", "conn_srm", "ablated", "full"]))
+# Canonical metrics.json["methods"] keys (evaluate / run_experiment write these). Legacy aliases full/ablated are
+# accepted only when collecting rows from older payloads.
+ROW_METHODS = dict(zip(TABLE_ROWS, ["noalign", "brainsync", "fugw", "conn_srm", "ours_ablated", "ours_full"]))
+METHOD_ALIASES = {"full": "ours_full", "ablated": "ours_ablated", "ours": "ours_full"}
+CANONICAL_MODEL_METHODS = {"ours_ablated", "ours_full"}
 MODEL_ROWS = TABLE_ROWS[4:]
-MODEL_METHODS = {ROW_METHODS[label] for label in MODEL_ROWS}
+MODEL_METHODS = {ROW_METHODS[label] for label in MODEL_ROWS} | set(METHOD_ALIASES)
+
+
+def canonical_method_key(name: str) -> str:
+    return METHOD_ALIASES.get(name, name)
+
+
+def _is_model_method(name: str) -> bool:
+    return canonical_method_key(name) in CANONICAL_MODEL_METHODS
+
+
+def lookup_method_entry(methods: dict[str, Any], key: str) -> Any | None:
+    """The method stats for a canonical row key, also matching legacy aliases in old metrics.json files."""
+    if key in methods:
+        return methods[key]
+    for alias, canonical in METHOD_ALIASES.items():
+        if canonical == key and alias in methods:
+            return methods[alias]
+    return None
 
 # The registry experiment that produces each row (the experiment names of W0's experiment script), in row order.
 TABLE_EXPERIMENTS = ["00_noalign", "01_brainsync", "02_fugw", "03_conn_srm", "11_ours_ablated", "10_ours_full"]
@@ -72,21 +93,24 @@ def _validate_method(run_id: str, name: str, stats: Any) -> None:
     p = stats["perm_p"]
     if not _is_number(p) or not 0.0 < p <= 1.0:
         fail("perm_p", f"must be a number in (0, 1], got {p!r}")
-    for key in ("null_max", "alignment_gain"):
-        if not _is_number(stats[key]):
-            fail(key, f"must be a number, got {stats[key]!r}")
+    null_max = stats["null_max"]
+    if null_max is not None and not _is_number(null_max):
+        fail("null_max", f"must be a number or null, got {null_max!r}")
+    if not _is_number(stats["alignment_gain"]):
+        fail("alignment_gain", f"must be a number, got {stats['alignment_gain']!r}")
     count = stats["nonidentifiable_pairs"]
     if not _is_int(count) or count < 0:
         fail("nonidentifiable_pairs", f"must be a non-negative integer, got {count!r}")
 
+    is_model = _is_model_method(name)
     for key in _MODEL_ONLY_KEYS:
         value = stats[key]
-        if name not in MODEL_METHODS:
+        if not is_model:
             if value is not None:
                 fail(key, f"a baseline cannot produce this and must report null (never 0 or empty), got {value!r}")
         elif value is None:
             fail(key, "a model row must report it, got null")
-    if name in MODEL_METHODS:
+    if is_model:
         if not _is_number(stats["per_pair_uncertainty"]):
             fail("per_pair_uncertainty", f"must be a number, got {stats['per_pair_uncertainty']!r}")
         flags = stats["per_pair_flags"]
@@ -185,10 +209,11 @@ def collect_rows(index_path: Path, experiments: Iterable[str] | None = None, run
     for entry in _select_runs(records, index_path, experiments, run_ids, include_fake):
         metrics = load_run_metrics(index_path.parent, entry["run_id"])
         for label, key in ROW_METHODS.items():
-            if key in metrics["methods"]:
+            stats = lookup_method_entry(metrics["methods"], key)
+            if stats is not None:
                 rows[label] = {
                     "method": label, "missing": False, "experiment": entry["experiment"], "run_id": entry["run_id"],
-                    **{k: metrics["methods"][key][k] for k in _METHOD_KEYS},
+                    **{k: stats[k] for k in _METHOD_KEYS},
                     "n_subjects": metrics.get("n_subjects"), **{k: metrics[k] for k in ("n_pairs", "pairs_seed", "permutations_B", "beta")},
                 }
     return [rows[label] for label in TABLE_ROWS]
@@ -240,8 +265,9 @@ def render_table_meta(folds: str, seed: int | None, n_pairs: int | None, beta: f
         subsample = f"{n_pairs} ordered subject pairs, seed {'not declared' if seed is None else seed}"
     return "\n".join([
         f"- Declared pair subsample: {subsample}",
-        "- Draw procedure: ordered pairs (a, b) of distinct subjects drawn with replacement by "
-        "numpy.random.default_rng(seed) (trajot.eval.folds.sample_pairs)",
+        f"- Draw procedure: ordered pairs (a, b) of distinct subjects drawn without replacement via "
+        f"numpy.random.default_rng(seed).choice over lexicographic ordered pairs "
+        f"({FOLD_PROCEDURE}; trajot.eval.folds.sample_pairs / make_folds)",
         f"- Fold scheme: {folds}",
         f"- beta: {'not reported (no model run in this table)' if beta is None else beta}",
     ]) + "\n"

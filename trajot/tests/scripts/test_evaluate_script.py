@@ -90,7 +90,7 @@ def test_evaluate_synthetic_runs_noalign_and_fake(tmp_path):
     assert payload["n_subjects"] > 0
 
     keys = _expected_method_keys()
-    for stats in payload["methods"].values():
+    for name, stats in payload["methods"].items():
         assert set(stats) == keys
         assert 0.0 <= stats["ident_accuracy"] <= 1.0
         if stats["perm_p"] is not None:
@@ -101,9 +101,9 @@ def test_evaluate_synthetic_runs_noalign_and_fake(tmp_path):
         assert flags is None or isinstance(flags, list)
         if flags is not None:
             assert len(flags) > 0
-        # Unfilled model-only columns are null, never 0-by-default for baselines.
-        if "per_pair_uncertainty" in stats and stats["per_pair_uncertainty"] is None:
-            pass  # explicitly allowed
+        # Baselines emit null for the two model-only columns (W4 validate_metrics contract).
+        assert stats["per_pair_flags"] is None, name
+        assert stats["per_pair_uncertainty"] is None, name
 
 
 def test_evaluate_method_helper_schema_valid(tmp_path):
@@ -134,6 +134,39 @@ def test_evaluate_method_helper_schema_valid(tmp_path):
     assert set(stats) == _expected_method_keys()
     assert 0.0 <= stats["ident_accuracy"] <= 1.0
     assert isinstance(stats["null_max"], (float, type(None)))
+    assert stats["per_pair_flags"] is None
+    assert stats["per_pair_uncertainty"] is None
+    assert module._canonical_method_key("full") == "ours_full"
+    assert module._canonical_method_key("ablated") == "ours_ablated"
+    assert module._canonical_method_key("ours_full") == "ours_full"
+
+
+def test_evaluate_all_writes_canonical_ours_keys_not_aliases(tmp_path):
+    import numpy as np
+    from trajot.config import Config
+
+    shutil.copytree(ROOT / "configs", tmp_path / "configs", ignore=shutil.ignore_patterns("paths.yaml"))
+    (tmp_path / "configs" / "paths.yaml").write_text(
+        f"data_root: {tmp_path / 'data'}\ncontract_version: '1'\n"
+    )
+    module = _load_module(ROOT / "scripts" / "evaluate.py", "evaluate_keys")
+    raw = {
+        "experiment": "10_ours_full",
+        "data": {"root": str(tmp_path / "data"), "contract_version": "1"},
+        "run": {"seed": 1, "n_jobs": 1, "debug": True, "synthetic": True},
+        "eval": {"pairs": {"n": 4, "seed": 2}, "permutations": {"B": 8}},
+    }
+    cfg = Config(raw)
+    S, R = 5, 8
+    rng = np.random.default_rng(0)
+    run1 = np.stack([_sym(rng, R) for _ in range(S)])
+    run2 = run1 + 0.02 * np.stack([_sym(rng, R) for _ in range(S)])
+    subjects = [f"{i:03d}" for i in range(S)]
+    out = module._evaluate_all(["full", "ours_full", "noalign"], run1, run2, cfg, subjects)
+    assert "ours_full" in out and "full" not in out
+    assert "noalign" in out
+    assert out["noalign"]["per_pair_flags"] is None
+    assert out["noalign"]["per_pair_uncertainty"] is None
 
 
 def _sym(rng, R: int) -> "np.ndarray":

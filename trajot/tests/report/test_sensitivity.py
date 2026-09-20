@@ -64,7 +64,7 @@ def sensitivity_run(runs_dir: Path, experiment: str, key: str, model: bool, run_
 
 def test_the_columns_and_the_flag_mark_the_output_as_a_sensitivity_analysis(tmp_path: Path) -> None:
     sensitivity_run(tmp_path, "01_brainsync", "brainsync", False, "s-bs", accuracy=0.61)
-    sensitivity_run(tmp_path, "10_ours_full", "full", True, "s-full", accuracy=0.72)
+    sensitivity_run(tmp_path, "10_ours_full", "ours_full", True, "s-full", accuracy=0.72)
     frame = scan_length_metrics(tmp_path / "index.csv", SUBSET)
     assert list(frame.columns) == SENSITIVITY_COLUMNS
     assert (frame["analysis"] == SENSITIVITY_LABEL).all() and "sensitivity" in SENSITIVITY_LABEL
@@ -99,7 +99,7 @@ def test_the_latest_successful_sensitivity_run_per_experiment_is_used(tmp_path: 
 
 def test_experiments_select_which_headline_experiments_are_repeated(tmp_path: Path) -> None:
     sensitivity_run(tmp_path, "01_brainsync", "brainsync", False, "s-bs")
-    sensitivity_run(tmp_path, "10_ours_full", "full", True, "s-full")
+    sensitivity_run(tmp_path, "10_ours_full", "ours_full", True, "s-full")
     assert list(scan_length_metrics(tmp_path / "index.csv", SUBSET, experiments=["10_ours_full"]).run_id) == ["s-full"]
     assert scan_length_metrics(tmp_path / "index.csv", SUBSET, experiments=["02_fugw"]).empty
 
